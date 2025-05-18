@@ -1,0 +1,430 @@
+const char DRAW_HTML[] PROGMEM = R"html(
+<!-- This file starts with `R"html(` so it can be included as a Raw literal string in c++  -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="LED Draw">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LED Draw">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="8x8 LED Matrix Drawing Tool">
+  <link rel="manifest" href='data:application/manifest+json,{
+    "name": "LED Matrix Draw",
+    "short_name": "LED Draw",
+    "display": "fullscreen",
+    "orientation": "any",
+    "start_url": ".",
+    "id": "/draw",
+    "scope": "/",
+    "background_color": "#1a1a1a",
+    "theme_color": "#1a1a1a",
+    "categories": ["utilities"],
+    "launch_handler": {
+      "client_mode": ["focus-existing", "auto"]
+    },
+    "icons": [{
+      "src": "data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\'%3E%3Crect width=\'512\' height=\'512\' fill=\'%232d2d2d\'/%3E%3Cpath d=\'M96 96h320v320H96z\' fill=\'%23222\'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }]
+  }'>
+  <title>LED Matrix Draw</title>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function() {});
+    }
+    // Prevent pinch zoom
+    document.addEventListener('touchmove', function(e) {
+      if (e.scale !== 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+  </script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      position: fixed;
+      width: 100%;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a1a1a;
+      padding: 16px;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+      width: 100%;
+      max-width: 320px;
+      padding: 16px;
+      background: #2d2d2d;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    table {
+      border-collapse: collapse;
+      background: #222;
+      border-radius: 8px;
+      width: min(320px, 80vw);
+      table-layout: fixed;
+      border-spacing: 0;
+    }
+
+    td {
+      position: relative;
+      width: 12.5%;
+      padding-top: 12.5%; /* Makes cells square */
+      border: 2px solid #333;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    td::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: inherit;
+    }
+
+    td:hover {
+      border-color: #555;
+    }
+
+    .color-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      padding: 12px;
+      background: #222;
+      border-radius: 8px;
+    }
+
+    .rgb-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .rgb-control label {
+      color: #fff;
+      font-size: 0.9em;
+      width: 60px;
+    }
+
+    .rgb-control span {
+      color: #fff;
+      font-size: 0.8em;
+      opacity: 0.6;
+      width: 30px;
+      text-align: right;
+    }
+
+    .rgb-control input[type="range"] {
+      flex: 1;
+    }
+
+    .color-preview {
+      width: 100%;
+      height: 40px;
+      border-radius: 4px;
+      background: #000;
+      margin-top: 8px;
+      border: 2px solid #333;
+    }
+
+    .control-group {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .brightness-control {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .brightness-control label {
+      color: #fff;
+      font-size: 0.9em;
+      opacity: 0.8;
+    }
+
+    .brightness-control span {
+      color: #fff;
+      font-size: 0.8em;
+      opacity: 0.6;
+      text-align: right;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 32px;  /* Increased touch area */
+      background: linear-gradient(to bottom, transparent 8px, #222 8px, #222 24px, transparent 24px);
+      border-radius: 3px;
+      appearance: none;
+      outline: none;
+      touch-action: none;  /* Better touch handling */
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 24px;  /* Larger thumb */
+      height: 24px;
+      background: #4CAF50;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s;
+      transform: translateY(-1px); /* Center the thumb */
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #45a049;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .button-group button {
+      flex: 1;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.95em;
+      font-weight: 500;
+      width: 100%;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    #sendMatrix {
+      background: linear-gradient(45deg, #4776E6, #8E54E9);
+    }
+  </style>
+</head>
+
+<body>    <div class="controls">
+    <div class="color-controls">
+      <div class="rgb-control">
+        <label for="red">🔴 Red</label>
+        <input type="range" id="red" min="0" max="255" value="0">
+        <span id="redValue">0</span>
+      </div>
+      <div class="rgb-control">
+        <label for="green">🟢 Green</label>
+        <input type="range" id="green" min="0" max="255" value="0">
+        <span id="greenValue">0</span>
+      </div>
+      <div class="rgb-control">
+        <label for="blue">🔵 Blue</label>
+        <input type="range" id="blue" min="0" max="255" value="0">
+        <span id="blueValue">0</span>
+      </div>
+      <div class="color-preview" id="colorPreview"></div>
+    </div>
+    <div class="control-group">
+      <div class="brightness-control">
+        <label for="brightness">💡 Brightness</label>
+        <input type="range" id="brightness" min="0" max="255" value="50">
+        <span id="brightnessValue">20%</span>
+      </div>
+    </div>
+    <div class="button-group">
+      <button onclick="fillAll()">🎨 Fill</button>
+      <button onclick="clearMatrix()" style="background-color: #d32f2f">🗑️ Clear</button>
+    </div>
+    <table id="matrix"></table>
+    <button id="sendMatrix" onclick="sendMatrix()">✨ Update Matrix</button>
+  </div>
+  </style>
+  <script>
+    const rows = 8, cols = 8;
+    let matrix = Array.from({ length: rows }, () => Array(cols).fill('#000000'));
+    const table = document.getElementById('matrix');
+    const redSlider = document.getElementById('red');
+    const greenSlider = document.getElementById('green');
+    const blueSlider = document.getElementById('blue');
+    const redValue = document.getElementById('redValue');
+    const greenValue = document.getElementById('greenValue');
+    const blueValue = document.getElementById('blueValue');
+    const colorPreview = document.getElementById('colorPreview');
+    const fillButton = document.querySelector('button');  // First button is Fill All
+    let isPainting = false;
+
+    function updateColor() {
+      const r = redSlider.value;
+      const g = greenSlider.value;
+      const b = blueSlider.value;
+      const color = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+      colorPreview.style.backgroundColor = color;
+      fillButton.style.backgroundColor = color;
+      redValue.textContent = r;
+      greenValue.textContent = g;
+      blueValue.textContent = b;
+      return color;
+    }
+
+    redSlider.addEventListener('input', updateColor);
+    greenSlider.addEventListener('input', updateColor);
+    blueSlider.addEventListener('input', updateColor);
+    
+    // Set initial color
+    updateColor();
+
+    // Handle brightness control
+    const brightnessSlider = document.getElementById('brightness');
+    const brightnessValue = document.getElementById('brightnessValue');
+    
+    brightnessSlider.addEventListener('input', () => {
+      const value = brightnessSlider.value;
+      const percentage = Math.round((value / 255) * 100);
+      brightnessValue.textContent = percentage + '%';
+      fetch('/brightness?value=' + value)
+        .then(response => response.text())
+        .then(result => console.log(result))
+        .catch(error => console.error('Error:', error));
+    });
+
+    // Create the matrix table
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement('td');
+        td.style.backgroundColor = matrix[r][c];
+        td.style.background = matrix[r][c];
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+
+    function paintCell(cell) {
+      const row = cell.parentElement.rowIndex;
+      const col = cell.cellIndex;
+      const color = updateColor();
+      matrix[row][col] = color;
+      cell.style.backgroundColor = color;
+      cell.style.background = color;
+    }
+
+    // Handle mouse events
+    table.addEventListener('mousedown', (e) => {
+      isPainting = true;
+      if (e.target.tagName === 'TD') {
+        paintCell(e.target);
+      }
+    });
+
+    table.addEventListener('mousemove', (e) => {
+      if (isPainting && e.target.tagName === 'TD') {
+        paintCell(e.target);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      isPainting = false;
+    });
+
+    // Handle touch events
+    table.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isPainting = true;
+      const touch = e.touches[0];
+      const cell = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (cell.tagName === 'TD') {
+        paintCell(cell);
+      }
+    });
+
+    table.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isPainting) {
+        const touch = e.touches[0];
+        const cell = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (cell && cell.tagName === 'TD') {
+          paintCell(cell);
+        }
+      }
+    });
+
+    document.addEventListener('touchend', () => {
+      isPainting = false;
+    });
+
+    function fillAll() {
+      const color = updateColor();
+      const cells = table.getElementsByTagName('td');
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const row = cell.parentElement.rowIndex;
+        const col = cell.cellIndex;
+        matrix[row][col] = color;
+        cell.style.backgroundColor = color;
+      }
+    }
+
+    function clearMatrix() {
+      const cells = table.getElementsByTagName('td');
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const row = cell.parentElement.rowIndex;
+        const col = cell.cellIndex;
+        matrix[row][col] = '#000000';
+        cell.style.backgroundColor = '#000000';
+      }
+    }
+
+    function sendMatrix() {
+      fetch('/set_matrix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matrix)
+      }).then(r => r.text()).then(alert);
+    }
+  </script>
+</body>
+
+</html>
+)html";

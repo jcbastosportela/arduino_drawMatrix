@@ -1,0 +1,10 @@
+# Syntax Coloring Map For Asynchrony
+
+# Datatypes (KEYWORD1)
+Asynchrony    KEYWORD1
+
+# Methods and Functions (KEYWORD2)
+
+# Instances (KEYWORD2)
+
+# Constants (LITERAL1)

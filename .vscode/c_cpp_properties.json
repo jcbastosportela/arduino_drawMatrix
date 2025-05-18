@@ -1,0 +1,37 @@
+{
+    "configurations": [
+        {
+            "name": "Arduino",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/libraries/*",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/cores/esp8266",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/variants/esp8285",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/libraries/**",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/sdk/lwip2/include/",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/sdk/include/",
+                "/home/portela/.arduino15/packages/esp8266/tools/xtensa-lx106-elf-gcc/3.1.0-gcc10.3-e5f9fec/xtensa-lx106-elf/include",
+                "/home/portela/.arduino15/packages/esp8266/tools/xtensa-lx106-elf-gcc/3.1.0-gcc10.3-e5f9fec/xtensa-lx106-elf/include/c++/10.3.0",
+                "/home/portela/.arduino15/packages/esp8266/tools/xtensa-lx106-elf-gcc/3.1.0-gcc10.3-e5f9fec/xtensa-lx106-elf/include/c++/10.3.0/xtensa-lx106-elf",
+                "/home/portela/.arduino15/packages/esp8266/tools/xtensa-lx106-elf-gcc/3.1.0-gcc10.3-e5f9fec/lib/gcc/xtensa-lx106-elf/10.3.0/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "ARDUINO=200",
+                "USING_RAWLITERAL_STRINGS=1"
+                // "MMU_ICACHE_SIZE=0x4000",
+                // "DEV_DEBUG_PRINT"
+            ],
+            // "windowsSdkVersion": "10.0.22000.0",
+            // "compilerPath": "cl.exe",
+            "compilerPath": "/home/portela/.arduino15/packages/esp8266/tools/xtensa-lx106-elf-gcc/3.1.0-gcc10.3-e5f9fec/bin/xtensa-lx106-elf-g++",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            // "intelliSenseMode": "windows-msvc-x64"
+            "intelliSenseMode": "gcc-x64"
+        }
+    ],
+    "version": 4
+}
