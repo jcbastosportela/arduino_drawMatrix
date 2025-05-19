@@ -396,16 +396,53 @@ const char DRAW_HTML[] PROGMEM = R"html(
     // Handle brightness control
     const brightnessSlider = document.getElementById('brightness');
     const brightnessValue = document.getElementById('brightnessValue');
-    
-    brightnessSlider.addEventListener('input', () => {
+
+    function updateBrightness() {
       const value = brightnessSlider.value;
       const percentage = Math.round((value / 255) * 100);
       brightnessValue.textContent = percentage + '%';
-      fetch('/brightness?value=' + value)
+      fetch('/set_display_brightness?value=' + value)
         .then(response => response.text())
         .then(result => console.log(result))
         .catch(error => console.error('Error:', error));
+    }
+
+    brightnessSlider.addEventListener('change', updateBrightness); // Fires on release (mouse/touch)
+
+    // Touch event handling for mobile (like color sliders)
+    let brightnessActive = false;
+    brightnessSlider.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      brightnessActive = true;
+      updateBrightnessSliderValue(e, this);
     });
+    brightnessSlider.addEventListener('touchmove', function(e) {
+      e.preventDefault();
+      updateBrightnessSliderValue(e, this);
+    });
+    brightnessSlider.addEventListener('mousedown', function(e) {
+      brightnessActive = true;
+    });
+    document.addEventListener('touchend', function(e) {
+      if (brightnessActive) {
+        updateBrightness();
+        brightnessActive = false;
+      }
+    });
+    document.addEventListener('mouseup', function(e) {
+      if (brightnessActive) {
+        updateBrightness();
+        brightnessActive = false;
+      }
+    });
+
+    function updateBrightnessSliderValue(e, slider) {
+      const touch = e.touches[0];
+      const rect = slider.getBoundingClientRect();
+      const position = touch.clientX - rect.left;
+      const percentage = Math.max(0, Math.min(1, position / rect.width));
+      slider.value = Math.round(percentage * 255);
+    }
 
     // Create the matrix table
     for (let r = 0; r < rows; r++) {
@@ -419,7 +456,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     }
 
     function checkConnection() {
-      fetch('/brightness?value=' + brightnessSlider.value, { timeout: 2000 })
+      fetch('/set_display_brightness?value=' + brightnessSlider.value, { timeout: 2000 })
         .then(() => {
           if (!isConnected) {
             console.log('Connection restored');

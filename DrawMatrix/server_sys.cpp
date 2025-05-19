@@ -186,7 +186,10 @@ DrawMatrix::DrawMatrix() : matrix(8 * 8, ws2812_pin, NEO_GRB + NEO_KHZ800), hue(
 }
 
 // --------------------------------------------------------------------------------------
-void DrawMatrix::set_brightness(uint8_t brightness) { matrix.setBrightness(brightness); }
+void DrawMatrix::set_brightness(uint8_t brightness) {
+    matrix.setBrightness(brightness);
+    matrix.show();
+}
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_color(uint32_t color) { this->color = color; }
