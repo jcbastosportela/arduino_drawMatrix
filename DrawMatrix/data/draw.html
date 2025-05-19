@@ -243,6 +243,30 @@ const char DRAW_HTML[] PROGMEM = R"html(
       flex: 1;
     }
 
+    .status-indicator {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #4CAF50;
+      transition: background-color 0.3s;
+    }
+
+    .status-indicator.offline {
+      background-color: #d32f2f;
+    }
+
+    .status-indicator.reconnecting {
+      background-color: #ff9800;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0.5; }
+    }
+
     button {
       background-color: #4CAF50;
       color: white;
@@ -270,7 +294,9 @@ const char DRAW_HTML[] PROGMEM = R"html(
   </style>
 </head>
 
-<body>    <div class="controls">
+<body>    
+    <div class="status-indicator" id="statusIndicator" title="Server Status"></div>
+    <div class="controls">
     <div class="color-controls">
       <div class="rgb-control">
         <label for="red">🔴 Red</label>
@@ -300,7 +326,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
       <button onclick="clearMatrix()" style="background-color: #000000">🧹 Clear</button>
     </div>
     <table id="matrix"></table>
-    <button id="sendMatrix" onclick="sendMatrix()">✨ Update Matrix</button>
+    <button id="sendMatrix" onclick="sendMatrixDebounced()">✨ Update Matrix</button>
   </div>
   </style>
   <script>
@@ -308,8 +334,13 @@ const char DRAW_HTML[] PROGMEM = R"html(
     let matrix = Array.from({ length: rows }, () => Array(cols).fill('#000000'));
     const table = document.getElementById('matrix');
     const redSlider = document.getElementById('red');
+    const statusIndicator = document.getElementById('statusIndicator');
+    let isConnected = true;
+    let reconnectAttempts = 0;
+    let pendingUpdates = [];
     const greenSlider = document.getElementById('green');
     const blueSlider = document.getElementById('blue');
+    let updateTimeout = null;
     const redValue = document.getElementById('redValue');
     const greenValue = document.getElementById('greenValue');
     const blueValue = document.getElementById('blueValue');
@@ -387,12 +418,70 @@ const char DRAW_HTML[] PROGMEM = R"html(
       table.appendChild(tr);
     }
 
+    function checkConnection() {
+      fetch('/brightness?value=' + brightnessSlider.value, { timeout: 2000 })
+        .then(() => {
+          if (!isConnected) {
+            console.log('Connection restored');
+            isConnected = true;
+            reconnectAttempts = 0;
+            statusIndicator.className = 'status-indicator';
+            // Resend any pending updates
+            if (pendingUpdates.length > 0) {
+              sendMatrixDebounced();
+            }
+          }
+        })
+        .catch(() => {
+          if (isConnected) {
+            console.log('Connection lost');
+            isConnected = false;
+            statusIndicator.className = 'status-indicator offline';
+          }
+          // Try to reconnect with exponential backoff
+          reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
+          statusIndicator.className = 'status-indicator reconnecting';
+          setTimeout(checkConnection, delay);
+        });
+    }
+
+    // Check connection status every 5 seconds
+    setInterval(checkConnection, 5000);
+    checkConnection(); // Initial check
+
+    function sendMatrixDebounced() {
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
+      updateTimeout = setTimeout(() => {
+        if (!isConnected) {
+          console.log('Update queued - offline');
+          pendingUpdates.push(true);
+          return;
+        }
+        fetch('set_display_matrix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(matrix)
+        })
+        .then(() => {
+          pendingUpdates = [];
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          checkConnection(); // Immediate connection check on error
+        });
+      }, 100); // 100ms debounce
+    }
+
     function paintCell(cell) {
       const row = cell.parentElement.rowIndex;
       const col = cell.cellIndex;
       const color = updateColor();
       matrix[row][col] = color;
       cell.style.backgroundColor = color;
+      sendMatrixDebounced();
     }
 
     // Handle mouse events
@@ -449,6 +538,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
         matrix[row][col] = color;
         cell.style.backgroundColor = color;
       }
+      sendMatrixDebounced();
     }
 
     function clearMatrix() {
@@ -460,10 +550,11 @@ const char DRAW_HTML[] PROGMEM = R"html(
         matrix[row][col] = '#000000';
         cell.style.backgroundColor = '#000000';
       }
+      sendMatrixDebounced();
     }
 
     function sendMatrix() {
-      fetch('/set_matrix', {
+      fetch('set_display_matrix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(matrix)

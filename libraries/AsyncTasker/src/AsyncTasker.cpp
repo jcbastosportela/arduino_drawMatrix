@@ -27,7 +27,7 @@ void AsyncTasker::runEventLoop()
   {
     if (scheduledTasks[i].func && currentTime >= (scheduledTasks[i].startTime + scheduledTasks[i].executionTime))
     {
-      scheduledTasks[i].func(currentTime, scheduledTasks[i].executionTime);
+      scheduledTasks[i].func(currentTime, scheduledTasks[i].executionTime, scheduledTasks[i].repeat);
       // Clear the task after execution
       if(!scheduledTasks[i].repeat)
       {

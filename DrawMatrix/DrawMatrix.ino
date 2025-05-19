@@ -5,111 +5,29 @@
 #include <WiFiClient.h>
 
 #include <AsyncTasker.hpp>
-
-#include "server_sys.hpp"
+#include <memory>
 
 #include "DRAW_HTML.hpp"
-
+#include "server_sys.hpp"
 
 // #define STASSID "your-ssid"
 // #define STAPSK "your-password"
 
-#ifndef STASSID and STAPSK
+#if !defined(STASSID) && !defined(STAPSK)
 #include "credentials.hpp"
 #endif
 
 const char *ssid = STASSID;
 const char *password = STAPSK;
-constexpr int led = 13;
 ESP8266WebServer server(80);
-ServerSys::App app;
+std::unique_ptr<ServerSys::App> app;
 
-
-/**
- * @brief   Task to blink the LED
- *
- * @param t
- * @param delay
- */
-void heart_beat_blink(unsigned long t, unsigned long &delay);
-
-/**
- * @brief Handler for page not found
- *
- */
-void handleNotFound();
-
-/**
- * @brief Handler for root page
- *
- */
-void handleRoot();
-
-// --------------------------------------------------------------------------------------
-void handleRoot() {
-    digitalWrite(led, 1);
-    server.send(200, "text/plain", "hello from esp8266!\r\n");
-    digitalWrite(led, 0);
-}
-
-// --------------------------------------------------------------------------------------
-void handleNotFound() {
-    digitalWrite(led, 1);
-    String message = "File Not Found\n\n";
-    message += "URI: ";
-    message += server.uri();
-    message += "\nMethod: ";
-    message += (server.method() == HTTP_GET) ? "GET" : "POST";
-    message += "\nArguments: ";
-    message += server.args();
-    message += "\n";
-    for (uint8_t i = 0; i < server.args(); i++) {
-        message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-    }
-    server.send(404, "text/plain", message);
-    digitalWrite(led, 0);
-}
-
-// ======================================================================================
-void handleLEDOn() {
-    app.set_led(true);
-    JsonDocument jsonDoc;
-    jsonDoc["status"] = "LED is ON";
-    String response;
-    serializeJson(jsonDoc, response);
-    server.send(200, "application/json", response);
-}
-
-// ======================================================================================
-void handleLEDOff() {
-    app.set_led(false);
-    JsonDocument jsonDoc;
-    jsonDoc["status"] = "LED is OFF";
-    String response;
-    serializeJson(jsonDoc, response);
-    server.send(200, "application/json", response);
-}
-
-// ======================================================================================
-void handleGif() {
-    static const uint8_t gif[] PROGMEM = {0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x10, 0x00, 0x10, 0x00, 0x80, 0x01,
-                                          0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x2c, 0x00, 0x00, 0x00, 0x00,
-                                          0x10, 0x00, 0x10, 0x00, 0x00, 0x02, 0x19, 0x8c, 0x8f, 0xa9, 0xcb, 0x9d,
-                                          0x00, 0x5f, 0x74, 0xb4, 0x56, 0xb0, 0xb0, 0xd2, 0xf2, 0x35, 0x1e, 0x4c,
-                                          0x0c, 0x24, 0x5a, 0xe6, 0x89, 0xa6, 0x4d, 0x01, 0x00, 0x3b};
-    uint8_t gif_colored[sizeof(gif)];
-    memcpy_P(gif_colored, gif, sizeof(gif));
-    // Set the background to a random set of colors
-    gif_colored[16] = millis() % 256;
-    gif_colored[17] = millis() % 256;
-    gif_colored[18] = millis() % 256;
-    server.send(200, "image/gif", gif_colored, sizeof(gif_colored));
-}
+// --- Robustness: WiFi and server health check ---
+constexpr uint64_t WIFI_CHECK_INTERVAL = 10000;    // 10 seconds
+constexpr uint64_t SERVER_CHECK_INTERVAL = 5000;  // 30 seconds
 
 // ======================================================================================
 void setup(void) {
-    pinMode(led, OUTPUT);
-    digitalWrite(led, 0);
     Serial.begin(115200);
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -130,79 +48,20 @@ void setup(void) {
         Serial.println("MDNS responder started");
     }
 
-    // inti FS
-    // if (!SPIFFS.begin()) {
-    //     Serial.println("SPIFFS Mount Failed");
-    //     return;
-    // }
+    app = std::make_unique<ServerSys::App>(server);
 
-    server.on("/", handleRoot);
+    server.on("/", std::bind(&ServerSys::App::handle_root, app.get()));
+    server.on("/status_led_control", std::bind(&ServerSys::App::handle_status_led_control, app.get()));
+    server.on("/set_display_brightness", std::bind(&ServerSys::App::handle_set_display_brightness, app.get()));
+    server.on("/set_display_color", std::bind(&ServerSys::App::handle_set_display_color, app.get()));
+    server.on("/gif", std::bind(&ServerSys::App::handle_gif, app.get()));
+    server.on("/set_display_matrix", HTTP_POST, std::bind(&ServerSys::App::handle_set_display_matrix, app.get()));
+    server.on("/draw", []() { server.send(200, "text/html", DRAW_HTML); });
+    server.onNotFound(std::bind(&ServerSys::App::handle_not_found, app.get()));
 
-    server.on("/inline", []() { server.send(200, "text/plain", "this works as well"); });
-
-    server.on("/led/on", handleLEDOn);
-    server.on("/led/off", handleLEDOff);
-    server.on("/gif", handleGif);
-    server.on("/brightness", []() {
-        String message = "Brightness: ";
-        message += server.arg("value");
-        server.send(200, "text/plain", message);
-        app.set_display_brightness(static_cast<uint8_t>(server.arg("value").toInt()));
-    });
-    server.on("/color", []() {
-        uint32_t color = (static_cast<uint8_t>(server.arg("w").toInt()) << 24) |
-                         (static_cast<uint8_t>(server.arg("r").toInt()) << 16) |
-                         (static_cast<uint8_t>(server.arg("g").toInt()) << 8) |
-                         (static_cast<uint8_t>(server.arg("b").toInt()));
-
-        // Create a single-color GIF (16x16, color table with only one color)
-        static uint8_t gif[] = {0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x10, 0x00, 0x10, 0x00,
-                                0x80, 0x00, 0x00, 0x00, 0x00, 0x00,  // color table: black
-                                0x00, 0x00, 0x00,                    // color table: black (padding)
-                                0x2C, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10, 0x00, 0x00,
-                                0x02, 0x16, 0x8C, 0x8F, 0xA9, 0xCB, 0xED, 0x0F, 0xA3, 0x9C,
-                                0xB4, 0xDA, 0x8B, 0xB3, 0xDE, 0xBC, 0xFB, 0x0F, 0x00, 0x3B};
-        // Set the color table to the requested color (first entry)
-        gif[16] = (color >> 16) & 0xFF;  // Red
-        gif[17] = (color >> 8) & 0xFF;   // Green
-        gif[18] = color & 0xFF;          // Blue
-
-        server.send(200, "image/gif", gif, sizeof(gif));
-        app.set_display_color(color);
-    });
-
-    server.on("/set_matrix", HTTP_POST, []() {
-        if (!server.hasArg("plain")) {
-            server.send(400, "text/plain", "No data received");
-            return;
-        }
-
-        String json = server.arg("plain");
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, json);
-        
-        if (error) {
-            server.send(400, "text/plain", "Invalid JSON");
-            return;
-        }
-
-        if (!doc.is<JsonArray>() || doc.size() != 8 || !doc[0].is<JsonArray>() || doc[0].size() != 8) {
-            server.send(400, "text/plain", "Invalid matrix format");
-            return;
-        }
-		app.set_display_matrix(doc);
-        // silently update the matrix
-        // server.send(200, "text/plain", "Matrix updated successfully");
-    });
-
-    server.on("/draw", []() {
-        server.send(200, "text/html", DRAW_HTML);
-    });
-    server.onNotFound(handleNotFound);
-
+#if 0
     /////////////////////////////////////////////////////////
     // Hook examples
-
     server.addHook([](const String &method, const String &url, WiFiClient *client,
                       ESP8266WebServer::ContentTypeFunction contentType) {
         (void)method;       // GET, PUT, ...
@@ -257,18 +116,52 @@ void setup(void) {
         }
         return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
     });
-
     // Hook examples
     /////////////////////////////////////////////////////////
-
+#endif  // 0
     server.begin();
     Serial.println("HTTP server started");
+
+    AsyncTasker::schedule(
+        WIFI_CHECK_INTERVAL,
+        [](uint64_t, uint64_t &, bool &) {
+            Serial.printf("Checking WiFi\n");
+
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.println("WiFi disconnected! Attempting reconnect...");
+                WiFi.disconnect();
+                WiFi.begin(ssid, password);
+            }
+        },
+        true);
+
+    AsyncTasker::schedule(
+        SERVER_CHECK_INTERVAL,
+        [](uint64_t, uint64_t &, bool &) {
+            static size_t n_fails = 0;
+            constexpr size_t max_fails = 3;
+            auto c = server.client();
+            if (c.connected()) {
+                Serial.println("Client connected");
+                Serial.println(c.remoteIP());
+            }else{
+                Serial.println("Client disconnected");
+                n_fails++;
+                if (n_fails > max_fails) {
+                    Serial.println("Too many failed attempts, restarting server...");
+                    server.close();
+                    server.begin();
+                    n_fails = 0;
+                }
+            }
+        },
+        true);
 }
 
 // ======================================================================================
 void loop(void) {
     server.handleClient();
     MDNS.update();
-    app.run();
+    app->run();
     AsyncTasker::runEventLoop();
 }

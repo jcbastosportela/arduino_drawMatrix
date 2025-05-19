@@ -7,7 +7,7 @@
 class AsyncTasker
 {
 public:
-  using Callback = std::function<void(uint64_t, uint64_t&)>;
+  using Callback = std::function<void(uint64_t, uint64_t&, bool&)>;
 
   /**
    * @brief Schedule a function with a time delay without blocking your loop.
