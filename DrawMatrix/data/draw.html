@@ -103,11 +103,12 @@ const char DRAW_HTML[] PROGMEM = R"html(
     td::after {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 2px;
+      left: 2px;
+      right: 2px;
+      bottom: 2px;
       background-color: inherit;
+      border-radius: 2px;
     }
 
     td:hover {
@@ -191,21 +192,44 @@ const char DRAW_HTML[] PROGMEM = R"html(
       border-radius: 3px;
       appearance: none;
       outline: none;
-      touch-action: none;  /* Better touch handling */
+      touch-action: pan-x;  /* Allow horizontal sliding */
     }
 
     input[type="range"]::-webkit-slider-thumb {
       appearance: none;
       width: 24px;  /* Larger thumb */
       height: 24px;
-      background: #4CAF50;
       border-radius: 50%;
       cursor: pointer;
       transition: background 0.2s;
       transform: translateY(-1px); /* Center the thumb */
     }
 
-    input[type="range"]::-webkit-slider-thumb:hover {
+    #red::-webkit-slider-thumb {
+      background: #ff0000;
+    }
+    #red::-webkit-slider-thumb:hover {
+      background: #dd0000;
+    }
+
+    #green::-webkit-slider-thumb {
+      background: #00ff00;
+    }
+    #green::-webkit-slider-thumb:hover {
+      background: #00dd00;
+    }
+
+    #blue::-webkit-slider-thumb {
+      background: #0000ff;
+    }
+    #blue::-webkit-slider-thumb:hover {
+      background: #0000dd;
+    }
+
+    #brightness::-webkit-slider-thumb {
+      background: #4CAF50;
+    }
+    #brightness::-webkit-slider-thumb:hover {
       background: #45a049;
     }
 
@@ -263,7 +287,6 @@ const char DRAW_HTML[] PROGMEM = R"html(
         <input type="range" id="blue" min="0" max="255" value="0">
         <span id="blueValue">0</span>
       </div>
-      <div class="color-preview" id="colorPreview"></div>
     </div>
     <div class="control-group">
       <div class="brightness-control">
@@ -274,7 +297,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     </div>
     <div class="button-group">
       <button onclick="fillAll()">🎨 Fill</button>
-      <button onclick="clearMatrix()" style="background-color: #d32f2f">🗑️ Clear</button>
+      <button onclick="clearMatrix()" style="background-color: #000000">🧹 Clear</button>
     </div>
     <table id="matrix"></table>
     <button id="sendMatrix" onclick="sendMatrix()">✨ Update Matrix</button>
@@ -295,11 +318,13 @@ const char DRAW_HTML[] PROGMEM = R"html(
     let isPainting = false;
 
     function updateColor() {
-      const r = redSlider.value;
-      const g = greenSlider.value;
-      const b = blueSlider.value;
-      const color = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
-      colorPreview.style.backgroundColor = color;
+      const r = parseInt(redSlider.value);
+      const g = parseInt(greenSlider.value);
+      const b = parseInt(blueSlider.value);
+      const color = '#' + 
+        (r < 16 ? '0' : '') + r.toString(16) +
+        (g < 16 ? '0' : '') + g.toString(16) +
+        (b < 16 ? '0' : '') + b.toString(16);
       fillButton.style.backgroundColor = color;
       redValue.textContent = r;
       greenValue.textContent = g;
@@ -307,9 +332,32 @@ const char DRAW_HTML[] PROGMEM = R"html(
       return color;
     }
 
-    redSlider.addEventListener('input', updateColor);
-    greenSlider.addEventListener('input', updateColor);
-    blueSlider.addEventListener('input', updateColor);
+    // Handle both touch and mouse events for sliders
+    const sliders = [redSlider, greenSlider, blueSlider];
+    
+    sliders.forEach(slider => {
+      slider.addEventListener('input', updateColor);
+      
+      // Touch event handling for mobile
+      slider.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        updateSliderValue(e, this);
+      });
+      
+      slider.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        updateSliderValue(e, this);
+      });
+    });
+    
+    function updateSliderValue(e, slider) {
+      const touch = e.touches[0];
+      const rect = slider.getBoundingClientRect();
+      const position = touch.clientX - rect.left;
+      const percentage = Math.max(0, Math.min(1, position / rect.width));
+      slider.value = Math.round(percentage * 255);
+      updateColor();
+    }
     
     // Set initial color
     updateColor();
@@ -334,7 +382,6 @@ const char DRAW_HTML[] PROGMEM = R"html(
       for (let c = 0; c < cols; c++) {
         const td = document.createElement('td');
         td.style.backgroundColor = matrix[r][c];
-        td.style.background = matrix[r][c];
         tr.appendChild(td);
       }
       table.appendChild(tr);
@@ -346,7 +393,6 @@ const char DRAW_HTML[] PROGMEM = R"html(
       const color = updateColor();
       matrix[row][col] = color;
       cell.style.backgroundColor = color;
-      cell.style.background = color;
     }
 
     // Handle mouse events

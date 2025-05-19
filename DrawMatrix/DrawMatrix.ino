@@ -10,9 +10,12 @@
 
 #include "DRAW_HTML.hpp"
 
-#ifndef STASSID
-#define STASSID "your-ssid"
-#define STAPSK "your-password"
+
+// #define STASSID "your-ssid"
+// #define STAPSK "your-password"
+
+#ifndef STASSID and STAPSK
+#include "credentials.hpp"
 #endif
 
 const char *ssid = STASSID;
