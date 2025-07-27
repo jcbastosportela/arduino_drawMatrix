@@ -34,13 +34,19 @@ Arduino libraries required:
 
 ## Installation
 
-1. Install required libraries through Arduino Library Manager
-2. Configure your WiFi credentials in `DrawMatrix.ino`:
+1. Install required libraries through Arduino Library Manager if needed (needed libraries are already in this workspace and it can be opened with Arduino2)
+1. We need to enable GNU++20:
+   1. create/modify the platform.local.txt (in GNU/Linux `~/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/platform.local.txt` NOTE that instead of `3.1.2` it might be a newer version!)
+   1. add this:
+   ```
+   compiler.cpp.extra_flags=-g -Os -w -std=gnu++20
+   ```
+1. Configure your WiFi credentials in `DrawMatrix.ino`:
    ```cpp
    #define STASSID "your-ssid"
    #define STAPSK "your-password"
    ```
-3. Upload the code to your ESP8266
+1. Upload the code to your ESP8266
 4. Access the interface at `http://[ESP8266-IP]/draw`
 
 ## Web Interface

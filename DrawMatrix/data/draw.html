@@ -55,18 +55,25 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
     html, body {
       height: 100%;
-      overflow: hidden;
-      position: fixed;
-      width: 100%;
+      width: 100vw;
+      max-width: 100vw;
+      margin: 0;
+      padding: 0;
+      overflow-x: auto;
+      overflow-y: auto;
+      position: static;
     }
 
     body {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: #1a1a1a;
-      padding: 16px;
+      padding: 8px 0 8px 0;
+      min-height: 100vh;
+      box-sizing: border-box;
     }
 
     .controls {
@@ -74,30 +81,42 @@ const char DRAW_HTML[] PROGMEM = R"html(
       flex-direction: column;
       gap: 16px;
       align-items: center;
-      width: 100%;
-      max-width: 320px;
-      padding: 16px;
+      width: 100vw;
+      max-width: 100vw;
+      padding: 8px 0 8px 0;
       background: #2d2d2d;
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      border-radius: 0;
+      box-shadow: none;
+      box-sizing: border-box;
     }
 
     table {
       border-collapse: collapse;
       background: #222;
       border-radius: 8px;
-      width: min(320px, 80vw);
+      width: 98vw;
+      max-width: 98vw;
+      height: auto;
+      aspect-ratio: 32 / 24;
       table-layout: fixed;
       border-spacing: 0;
+      margin: 0 auto;
+      touch-action: none;
+      display: block;
+      overflow-x: auto;
     }
 
     td {
       position: relative;
-      width: 12.5%;
-      padding-top: 12.5%; /* Makes cells square */
+      width: calc(98vw / 32);
+      height: calc(98vw / 32);
+      aspect-ratio: 1 / 1;
       border: 2px solid #333;
       cursor: pointer;
       transition: border-color 0.2s;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: none;
     }
 
     td::after {
@@ -330,8 +349,8 @@ const char DRAW_HTML[] PROGMEM = R"html(
   </div>
   </style>
   <script>
-    const rows = 8, cols = 8;
-    let matrix = Array.from({ length: rows }, () => Array(cols).fill('#000000'));
+  const rows = 32, cols = 24;
+  let matrix = Array.from({ length: rows }, () => Array(cols).fill('#000000'));
     const table = document.getElementById('matrix');
     const redSlider = document.getElementById('red');
     const statusIndicator = document.getElementById('statusIndicator');
@@ -444,16 +463,50 @@ const char DRAW_HTML[] PROGMEM = R"html(
       slider.value = Math.round(percentage * 255);
     }
 
-    // Create the matrix table
-    for (let r = 0; r < rows; r++) {
-      const tr = document.createElement('tr');
-      for (let c = 0; c < cols; c++) {
-        const td = document.createElement('td');
-        td.style.backgroundColor = matrix[r][c];
-        tr.appendChild(td);
+    // Render the matrix table (rotated 90° clockwise for display only)
+    function renderMatrixTable() {
+      table.innerHTML = '';
+      for (let y = 0; y < cols; y++) { // y is row, x is col
+        const tr = document.createElement('tr');
+        for (let x = 0; x < rows; x++) {
+          const td = document.createElement('td');
+          td.style.backgroundColor = matrix[x][y];
+          // Mouse events
+          td.addEventListener('mousedown', (e) => {
+            isPainting = true;
+            paintCell(td, x, y);
+          });
+          td.addEventListener('mousemove', (e) => {
+            if (isPainting) paintCell(td, x, y);
+          });
+          // Touch events for drag painting
+          td.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isPainting = true;
+            paintCell(td, x, y);
+          });
+          td.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.tagName === 'TD') {
+              // Find the cell's x and y
+              const parentTr = target.parentElement;
+              const rowIdx = Array.from(table.rows).indexOf(parentTr);
+              const colIdx = Array.from(parentTr.children).indexOf(target);
+              if (rowIdx !== -1 && colIdx !== -1) {
+                paintCell(target, colIdx, rowIdx);
+              }
+            }
+          });
+          tr.appendChild(td);
+        }
+        table.appendChild(tr);
       }
-      table.appendChild(tr);
     }
+    renderMatrixTable();
+    document.addEventListener('mouseup', () => { isPainting = false; });
+    document.addEventListener('touchend', () => { isPainting = false; });
 
     function checkConnection() {
       fetch('/set_display_brightness?value=' + brightnessSlider.value, { timeout: 2000 })
@@ -512,13 +565,12 @@ const char DRAW_HTML[] PROGMEM = R"html(
       }, 100); // 100ms debounce
     }
 
-    function paintCell(cell) {
-      const row = cell.parentElement.rowIndex;
-      const col = cell.cellIndex;
-      const color = updateColor();
-      matrix[row][col] = color;
-      cell.style.backgroundColor = color;
-      sendMatrixDebounced();
+    function paintCell(cell, visualRow, visualCol) {
+  // Standard orientation: x is col, y is row
+  const color = updateColor();
+  matrix[visualRow][visualCol] = color;
+  cell.style.backgroundColor = color;
+  sendMatrixDebounced();
     }
 
     // Handle mouse events
@@ -567,26 +619,22 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
     function fillAll() {
       const color = updateColor();
-      const cells = table.getElementsByTagName('td');
-      for (let i = 0; i < cells.length; i++) {
-        const cell = cells[i];
-        const row = cell.parentElement.rowIndex;
-        const col = cell.cellIndex;
-        matrix[row][col] = color;
-        cell.style.backgroundColor = color;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          matrix[r][c] = color;
+        }
       }
+      renderMatrixTable();
       sendMatrixDebounced();
     }
 
     function clearMatrix() {
-      const cells = table.getElementsByTagName('td');
-      for (let i = 0; i < cells.length; i++) {
-        const cell = cells[i];
-        const row = cell.parentElement.rowIndex;
-        const col = cell.cellIndex;
-        matrix[row][col] = '#000000';
-        cell.style.backgroundColor = '#000000';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          matrix[r][c] = '#000000';
+        }
       }
+      renderMatrixTable();
       sendMatrixDebounced();
     }
 
@@ -599,6 +647,5 @@ const char DRAW_HTML[] PROGMEM = R"html(
     }
   </script>
 </body>
-
 </html>
 )html";

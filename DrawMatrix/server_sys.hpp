@@ -11,6 +11,10 @@
 
 namespace ServerSys {
 
+constexpr size_t N_COLS = 32;
+constexpr size_t N_ROWS = 24;
+constexpr size_t N_PIXELS = N_COLS * N_ROWS;
+
 struct ITask {
     virtual void execute(uint64_t t, uint64_t &d, bool &repeat) = 0;
     virtual ~ITask() = default;
@@ -33,7 +37,7 @@ struct DrawMatrix : public ITask {
     void execute(uint64_t t, uint64_t &d, bool &repeat) override;
     void set_brightness(uint8_t brightness);
     void set_color(uint32_t color);
-    void set_matrix(uint32_t matrix_disp[8][8]);
+    void set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]);
     void set_matrix(const JsonDocument &matrix_disp);
 
     Adafruit_NeoPixel matrix;
