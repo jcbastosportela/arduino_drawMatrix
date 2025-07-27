@@ -343,9 +343,11 @@ const char DRAW_HTML[] PROGMEM = R"html(
     <div class="button-group">
       <button onclick="fillAll()">🎨 Fill</button>
       <button onclick="clearMatrix()" style="background-color: #000000">🧹 Clear</button>
+      <input type="file" id="importImage" accept="image/*" style="display:none" />
+      <button onclick="document.getElementById('importImage').click()">🖼️ Import Image</button>
     </div>
     <table id="matrix"></table>
-    <button id="sendMatrix" onclick="sendMatrixDebounced()">✨ Update Matrix</button>
+  <button id="sendMatrix" onclick="sendMatrixDebounced()">✨ Update Matrix</button>
   </div>
   </style>
   <script>
@@ -645,6 +647,43 @@ const char DRAW_HTML[] PROGMEM = R"html(
         body: JSON.stringify(matrix)
       }).then(r => r.text()).then(alert);
     }
+
+
+  // Image import and conversion logic
+  const importImageInput = document.getElementById('importImage');
+  importImageInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const img = new Image();
+      img.onload = function() {
+        // Create a canvas to resize the image
+        const canvas = document.createElement('canvas');
+        canvas.width = rows;
+        canvas.height = cols;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, rows, cols);
+        const imgData = ctx.getImageData(0, 0, rows, cols).data;
+        for (let y = 0; y < cols; y++) {
+          for (let x = 0; x < rows; x++) {
+            const idx = (y * rows + x) * 4;
+            const r = imgData[idx];
+            const g = imgData[idx + 1];
+            const b = imgData[idx + 2];
+            matrix[x][y] = '#' +
+              r.toString(16).padStart(2, '0') +
+              g.toString(16).padStart(2, '0') +
+              b.toString(16).padStart(2, '0');
+          }
+        }
+        renderMatrixTable();
+        sendMatrixDebounced();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
   </script>
 </body>
 </html>
