@@ -658,12 +658,31 @@ const char DRAW_HTML[] PROGMEM = R"html(
     reader.onload = function(ev) {
       const img = new Image();
       img.onload = function() {
-        // Create a canvas to resize the image
+        // Create a canvas to resize the image with 'cover' logic
         const canvas = document.createElement('canvas');
         canvas.width = rows;
         canvas.height = cols;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, rows, cols);
+        // Calculate aspect ratios
+        const matrixAspect = rows / cols;
+        const imgAspect = img.width / img.height;
+        let drawWidth, drawHeight, offsetX, offsetY;
+        if (imgAspect > matrixAspect) {
+          // Image is wider than matrix: fill height, crop sides
+          drawHeight = cols;
+          drawWidth = img.width * (cols / img.height);
+          offsetX = (rows - drawWidth) / 2;
+          offsetY = 0;
+        } else {
+          // Image is taller than matrix: fill width, crop top/bottom
+          drawWidth = rows;
+          drawHeight = img.height * (rows / img.width);
+          offsetX = 0;
+          offsetY = (cols - drawHeight) / 2;
+        }
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, rows, cols);
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
         const imgData = ctx.getImageData(0, 0, rows, cols).data;
         for (let y = 0; y < cols; y++) {
           for (let x = 0; x < rows; x++) {
