@@ -1,5 +1,6 @@
 #include "server_sys.hpp"
 
+#include <Adafruit_GFX.h>
 #include <Arduino.h>
 
 #include "AsyncTasker.hpp"
@@ -9,9 +10,65 @@ constexpr int ws2812_pin = 0;
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
-App::App(IServer &server)
-    : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state) {
+App::App(IServer &server, const NTPClient& ntp)
+    : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state), m_ntp(ntp) {
     AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
+    AsyncTasker::schedule(
+        1000,
+        [this](uint64_t t, uint64_t &d, bool &repeat) {
+            static uint8_t h_pos_x = 0;
+            static uint8_t m_pos_x = 4;
+            static uint8_t s_pos_x = 8;
+            static uint8_t cnt = 0;
+            task_draw_matrix.matrix.setTextWrap(false);
+            task_draw_matrix.matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
+            
+            task_draw_matrix.matrix.setCursor(h_pos_x, 0);
+            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
+            task_draw_matrix.matrix.printf("%.2u", m_ntp.getHours());
+
+            task_draw_matrix.matrix.setCursor(m_pos_x, 7);
+            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 120, 0));
+            task_draw_matrix.matrix.printf("%.2u", m_ntp.getMinutes());
+
+            cnt = m_ntp.getSeconds();
+            task_draw_matrix.matrix.setCursor(s_pos_x, 14);
+            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
+            task_draw_matrix.matrix.printf("%.2u", cnt);
+            AsyncTasker::schedule(100, [&](uint64_t t, uint64_t &d, bool &repeat) {
+                task_draw_matrix.matrix.setCursor(s_pos_x, 14);
+                task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
+                task_draw_matrix.matrix.printf("%.2u ", cnt);
+                task_draw_matrix.matrix.show();
+                (++s_pos_x) > (N_COLS - 16) ? (s_pos_x = 0) : s_pos_x;
+            });
+
+            (++h_pos_x) > (N_COLS - 16) ? (h_pos_x = 0) : h_pos_x;
+            (++m_pos_x) > (N_COLS - 16) ? (m_pos_x = 0) : m_pos_x;
+
+            // task_draw_matrix.matrix.setCursor(0, 0);
+            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
+            // task_draw_matrix.matrix.printf("%.2u", m_ntp.getHours());
+
+            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 120, 0));
+            // task_draw_matrix.matrix.printf("%.2u", m_ntp.getMinutes());
+
+            // cnt = m_ntp.getSeconds();
+            // s_pos_x = task_draw_matrix.matrix.getCursorX();
+            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
+            // task_draw_matrix.matrix.printf("%.2u", cnt);
+            // AsyncTasker::schedule(100, [&](uint64_t t, uint64_t &d, bool &repeat) {
+            //     task_draw_matrix.matrix.setCursor(s_pos_x, 0);
+            //     task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
+            //     task_draw_matrix.matrix.printf("%.2u ", cnt);
+            //     task_draw_matrix.matrix.show();
+            // });
+
+            task_draw_matrix.matrix.show();
+            Serial.printf("NTP time: %s\n", m_ntp.getFormattedTime().c_str());
+        },
+        true
+    );
     // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
 }
 
@@ -237,9 +294,13 @@ void HeartBeatBlink::execute(uint64_t t, uint64_t &d, bool &repeat) {
 }
 
 // --------------------------------------------------------------------------------------
-DrawMatrix::DrawMatrix() : matrix(N_COLS * N_ROWS, ws2812_pin, NEO_GRB + NEO_KHZ800), hue(0), color(0), pixel(0) {
+DrawMatrix::DrawMatrix()
+    : matrix(8, 8, 4, 3, (uint8_t)ws2812_pin,
+             (uint8_t)(NEO_TILE_TOP + NEO_TILE_RIGHT + NEO_TILE_COLUMNS +
+                       NEO_MATRIX_TOP + NEO_MATRIX_LEFT + NEO_MATRIX_ROWS ),
+             (neoPixelType)(NEO_GRB + NEO_KHZ800)) {
     matrix.begin();            // Initialize the NeoPixel strip
-    matrix.setBrightness(15);  // Set brightness to 15 (0-255)
+    matrix.setBrightness(6);  // Set brightness to 15 (0-255)
     matrix.clear();            // Clear the strip
     matrix.show();             // Update the strip to show the changes
 }
@@ -269,20 +330,20 @@ inline uint16_t prev_pixel(uint16_t pixel, uint16_t less_pixels = 1) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::execute(uint64_t t, uint64_t &d, bool &repeat) {
-    static uint16_t p = 0;  // Current pixel index
+    // static uint16_t p = 0;  // Current pixel index
 
-    if (!matrix.canShow()) {
-        Serial1.println("Matrix not ready to show, skipping update");
-        return;  // If the matrix is not ready to show, skip the update
-    }
-    matrix.fill(matrix.ColorHSV(p += 20, 255, 255), 0, N_PIXELS);  // Fill the matrix with a color based on hue
-    matrix.show();
+    // if (!matrix.canShow()) {
+    //     Serial.println("Matrix not ready to show, skipping update");
+    //     return;  // If the matrix is not ready to show, skip the update
+    // }
+    // matrix.fill(matrix.ColorHSV(p += 20, 255, 255), 0, N_PIXELS);  // Fill the matrix with a color based on hue
+    // matrix.show();
 }
 
 // --------------------------------------------------------------------------------------
 // Define the pixel indices for a 32x24 matrix, mapping each (col, row) to a physical LED index.
-// This is based on the assumption that the matrix is arranged in a specific order, such as zigzag or column-major order.
-// The pixel indices are calculated to match the physical layout of the LEDs in the matrix.
+// This is based on the assumption that the matrix is arranged in a specific order, such as zigzag or column-major
+// order. The pixel indices are calculated to match the physical layout of the LEDs in the matrix.
 constexpr std::array<size_t, N_COLS * N_ROWS> pixel_indices = {
 
     // 32x24 display: 4 columns x 3 rows of 8x8 boards
@@ -290,14 +351,14 @@ constexpr std::array<size_t, N_COLS * N_ROWS> pixel_indices = {
         std::array<size_t, N_COLS * N_ROWS> arr = {};
         constexpr int BOARD_COLS = 4, BOARD_ROWS = 3;
         constexpr int BOARD_W = 8, BOARD_H = 8;
-        
+
         for (int board_col = 0; board_col < BOARD_COLS; ++board_col) {
             for (int board_row = 0; board_row < BOARD_ROWS; ++board_row) {
                 for (int y = 0; y < BOARD_H; ++y) {
                     for (int x = 0; x < BOARD_W; ++x) {
-                        auto local_addr = x + y*BOARD_W;
-                        auto global_addr = local_addr + ((BOARD_W*BOARD_H)*(board_row + board_col*BOARD_ROWS));
-                        
+                        auto local_addr = x + y * BOARD_W;
+                        auto global_addr = local_addr + ((BOARD_W * BOARD_H) * (board_row + board_col * BOARD_ROWS));
+
                         auto gx = N_COLS - (board_col * BOARD_W) - BOARD_W + x;
                         auto gy = y + (board_row * BOARD_H);
                         arr[gx + gy * N_COLS] = global_addr;
@@ -306,9 +367,7 @@ constexpr std::array<size_t, N_COLS * N_ROWS> pixel_indices = {
             }
         }
         return arr;
-    }
-    ()
-};
+    }()};
 
 // --------------------------------------------------------------------------------------
 inline constexpr size_t pixel_index(size_t col, size_t row) {
@@ -320,6 +379,7 @@ inline constexpr size_t pixel_index(size_t col, size_t row) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]) {
+    Serial.println("Setting matrix from arrays");
     for (int col = 0; col < N_COLS; col++) {
         for (int row = 0; row < N_ROWS; row++) {
             uint32_t color = matrix_disp[col][row];
@@ -331,15 +391,10 @@ void DrawMatrix::set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_matrix(const JsonDocument &matrix_disp) {
+    Serial.println("Setting matrix from JSON document");
     for (size_t col = 0; col < N_COLS; col++) {
         for (size_t row = 0; row < N_ROWS; row++) {
-            String colorHex = matrix_disp[col][row].as<const char *>();
-            // Serial.printf("Setting pixel at (%d, %d) to color %s\n", col, row, colorHex.c_str());
-            uint32_t rgb = strtoul(colorHex.c_str() + 1, NULL, 16);  // Skip the '#' character
-            // uint8_t r = (rgb >> 16) & 0xFF;
-            // uint8_t g = (rgb >> 8) & 0xFF;
-            // uint8_t b = rgb & 0xFF;
-            // matrix.setPixelColor(pixel_index(col, row), matrix.Color(r, g, b));
+            uint32_t rgb = matrix_disp[col][row].as<uint32_t>();
             matrix.setPixelColor(pixel_index(col, row), rgb);
         }
     }

@@ -2,7 +2,9 @@
 #define DRAWMATRIX_SERVER_SYS
 
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoMatrix.h>
 #include <ArduinoJson.h>
+#include <NTPClient.h>
 
 #include <cstdint>
 
@@ -40,7 +42,7 @@ struct DrawMatrix : public ITask {
     void set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]);
     void set_matrix(const JsonDocument &matrix_disp);
 
-    Adafruit_NeoPixel matrix;
+    Adafruit_NeoMatrix matrix;
     uint8_t hue;
     uint32_t color;
     uint8_t pixel;
@@ -48,7 +50,7 @@ struct DrawMatrix : public ITask {
 
 class App : public IMatrixApp {
    public:
-    App(IServer &server);
+    App(IServer &server, const NTPClient& ntp);
     ~App();
 
     virtual void run() override;
@@ -62,6 +64,7 @@ class App : public IMatrixApp {
 
    private:
     IServer &m_server;
+    const NTPClient& m_ntp;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;
     bool m_status_led_state;
