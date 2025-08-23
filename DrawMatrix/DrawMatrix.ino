@@ -11,7 +11,7 @@
 #include <AsyncTasker.hpp>
 
 #include "DRAW_HTML.hpp"
-#include "server_sys.hpp"
+#include "ServerSys.hpp"
 
 // #define STASSID "your-ssid"
 // #define STAPSK "your-password"
@@ -19,7 +19,6 @@
 #if !defined(STASSID) && !defined(STAPSK)
 #include "credentials.hpp"
 #endif
-
 
 // --- Robustness: WiFi and server health check ---
 constexpr uint64_t WIFI_CHECK_INTERVAL = 10000;             // milliseconds
@@ -41,6 +40,8 @@ void setup(void) {
     WiFi.begin(ssid, password);
     Serial.println("");
 
+    app = std::make_unique<ServerSys::App>(server, ntpClient);
+
     // Wait for connection
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
@@ -55,8 +56,6 @@ void setup(void) {
     if (MDNS.begin("esp8266")) {
         Serial.println("MDNS responder started");
     }
-
-    app = std::make_unique<ServerSys::App>(server, ntpClient);
 
     server.on("/", std::bind(&ServerSys::App::handle_root, app.get()));
     server.on("/status_led_control", std::bind(&ServerSys::App::handle_status_led_control, app.get()));

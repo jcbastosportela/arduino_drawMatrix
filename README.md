@@ -61,8 +61,8 @@ The web interface provides:
 ## Project Structure
 
 - `DrawMatrix.ino`: Main Arduino sketch with server setup and endpoints
-- `server_sys.cpp`: LED matrix control implementation
-- `server_sys.hpp`: Header file with class definitions
+- `ServerSys.cpp`: LED matrix control implementation
+- `ServerSys.hpp`: Header file with class definitions
 - `DRAW_HTML.hpp`: link to HTML, to make Arduino happy
 - `data/`: folder with HMTLs, Web interface HTML/CSS/JavaScript
 

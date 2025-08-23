@@ -10,7 +10,7 @@
                 "${workspaceFolder}/libraries/Adafruit_NeoMatrix/",
                 "${workspaceFolder}/libraries/*",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/cores/esp8266",
-                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/variants/esp8285",
+                "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/variants/d1_mini/",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/libraries/**",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/sdk/lwip2/include/",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/sdk/include/",

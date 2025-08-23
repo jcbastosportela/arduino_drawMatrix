@@ -1,4 +1,4 @@
-#include "server_sys.hpp"
+#include "ServerSys.hpp"
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
@@ -6,12 +6,16 @@
 #include "AsyncTasker.hpp"
 
 using namespace std::placeholders;
-constexpr int ws2812_pin = 0;
+constexpr int ws2812_pin = D2;
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
-App::App(IServer &server, const NTPClient& ntp)
-    : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state), m_ntp(ntp) {
+App::App(IServer &server, const NTPClient &ntp)
+    : m_server(server),
+      m_status_led_state(true),
+      task_draw_matrix(),
+      task_heart_beat_blink(m_status_led_state),
+      m_ntp(ntp) {
     AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
     AsyncTasker::schedule(
         1000,
@@ -22,7 +26,7 @@ App::App(IServer &server, const NTPClient& ntp)
             static uint8_t cnt = 0;
             task_draw_matrix.matrix.setTextWrap(false);
             task_draw_matrix.matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
-            
+
             task_draw_matrix.matrix.setCursor(h_pos_x, 0);
             task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
             task_draw_matrix.matrix.printf("%.2u", m_ntp.getHours());
@@ -67,8 +71,7 @@ App::App(IServer &server, const NTPClient& ntp)
             task_draw_matrix.matrix.show();
             Serial.printf("NTP time: %s\n", m_ntp.getFormattedTime().c_str());
         },
-        true
-    );
+        true);
     // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
 }
 
@@ -295,14 +298,14 @@ void HeartBeatBlink::execute(uint64_t t, uint64_t &d, bool &repeat) {
 
 // --------------------------------------------------------------------------------------
 DrawMatrix::DrawMatrix()
-    : matrix(8, 8, 4, 3, (uint8_t)ws2812_pin,
-             (uint8_t)(NEO_TILE_TOP + NEO_TILE_RIGHT + NEO_TILE_COLUMNS +
-                       NEO_MATRIX_TOP + NEO_MATRIX_LEFT + NEO_MATRIX_ROWS ),
+    : matrix(MATRIX_WIDTH, MATRIX_HEIGHT, N_TILES_X, N_TILES_Y, (uint8_t)ws2812_pin,
+             (uint8_t)(NEO_TILE_TOP + NEO_TILE_RIGHT + NEO_TILE_COLUMNS + NEO_MATRIX_TOP + NEO_MATRIX_LEFT +
+                       NEO_MATRIX_ROWS),
              (neoPixelType)(NEO_GRB + NEO_KHZ800)) {
-    matrix.begin();            // Initialize the NeoPixel strip
+    matrix.begin();           // Initialize the NeoPixel strip
     matrix.setBrightness(6);  // Set brightness to 15 (0-255)
-    matrix.clear();            // Clear the strip
-    matrix.show();             // Update the strip to show the changes
+    matrix.clear();           // Clear the strip
+    matrix.show();            // Update the strip to show the changes
 }
 
 // --------------------------------------------------------------------------------------
