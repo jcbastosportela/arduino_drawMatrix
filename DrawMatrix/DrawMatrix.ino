@@ -1,3 +1,14 @@
+/**
+ * ------------------------------------------------------------------------------------------------------------------- *
+ *            DrawMatrix                                                                                               *
+ * @file      DrawMatrix.ino                                                                                           *
+ * @brief     Main entry point for DrawMatrix ESP8266 LED matrix controller                                            *
+ * @date      Sat Aug 23 2025                                                                                          *
+ * @author    Joao Carlos Bastos Portela (jcbastosportela@gmail.com)                                                   *
+ * @copyright 2025 - 2025, Joao Carlos Bastos Portela                                                                  *
+ *            MIT License                                                                                              *
+ * ------------------------------------------------------------------------------------------------------------------- *
+ */
 #include <memory>
 
 #include <ArduinoJson.h>

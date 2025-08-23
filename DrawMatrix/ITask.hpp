@@ -1,15 +1,14 @@
 /**
- * --------------------------------------------------------------------------- *
- *            DrawMatrix                                                       *
- * @file      ITask.hpp                                                        *
- * @brief     TODO: Add brief description                                      *
- * @date      Sat Aug 23 2025                                                  *
- * @author    Joao Carlos Bastos Portela (you@you.you)                         *
- * @copyright 2025 - 2025 Joao Carlos Bastos Portela                           *
- * @license   <<licensename>>                                                  *
- * --------------------------------------------------------------------------- *
+ * ------------------------------------------------------------------------------------------------------------------- *
+ *            DrawMatrix                                                                                               *
+ * @file      ITask.hpp                                                                                                *
+ * @brief     Interface for scheduled tasks in the DrawMatrix system                                                   *
+ * @date      Sat Aug 23 2025                                                                                          *
+ * @author    Joao Carlos Bastos Portela (jcbastosportela@gmail.com)                                                   *
+ * @copyright 2025 - 2025, Joao Carlos Bastos Portela                                                                  *
+ *            MIT License                                                                                              *
+ * ------------------------------------------------------------------------------------------------------------------- *
  */
-
 #ifndef DRAWMATRIX_ITASK
 #define DRAWMATRIX_ITASK
 

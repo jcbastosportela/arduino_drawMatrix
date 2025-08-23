@@ -1,22 +1,13 @@
 /**
- * --------------------------------------------------------------------------- *
- *            DrawMatrix                                                       *
- * @file      ServerSys.hpp                                                    *
- * @brief     Server-side logic for the DrawMatrix application                 *
- * @date      Sun Jul 27 2025                                                  *
- * @author    Joao Carlos Bastos Portela (you@you.you)                         *
- * @copyright 2025 - 2025 Joao Carlos Bastos Portela                           *
- * --------------------------------------------------------------------------- *
- */
-/**
- * --------------------------------------------------------------------------- *
- *            DrawMatrix                                                       *
- * @file      ServerSys.hpp                                                    *
- * @brief     Server-side logic for the DrawMatrix application                 *
- * @date      Sunday, 27th July 2025 12:53:51 am                               *
- * @author    Joao Carlos Bastos Portela (you@you.you)                         *
- * @copyright 2025 - 2025 Joao Carlos Bastos Portela                           *
- * --------------------------------------------------------------------------- *
+ * ------------------------------------------------------------------------------------------------------------------- *
+ *            DrawMatrix                                                                                               *
+ * @file      ServerSys.hpp                                                                                            *
+ * @brief     Core system definitions and interfaces for DrawMatrix server                                              *
+ * @date      Sat Aug 23 2025                                                                                          *
+ * @author    Joao Carlos Bastos Portela (jcbastosportela@gmail.com)                                                   *
+ * @copyright 2025 - 2025, Joao Carlos Bastos Portela                                                                  *
+ *            MIT License                                                                                              *
+ * ------------------------------------------------------------------------------------------------------------------- *
  */
 #ifndef DRAWMATRIX_SERVERSYS
 #define DRAWMATRIX_SERVERSYS
@@ -29,6 +20,7 @@
 #include <cstdint>
 
 #include "IMatrixApp.hpp"
+#include "ITask.hpp"
 #include "IServer.hpp"
 
 namespace ServerSys {
@@ -49,9 +41,28 @@ constexpr size_t N_ROWS = MATRIX_HEIGHT * N_TILES_Y;
 // Total number of pixels (N_COLS * N_ROWS)
 constexpr size_t N_PIXELS = N_COLS * N_ROWS;
 
+
+/**
+ * @brief Task for blinking a heartbeat LED.
+ */
 struct HeartBeatBlink : public ITask {
+    /**
+     * @brief Construct a HeartBeatBlink task.
+     * @param led_state Reference to the LED state variable.
+     */
     HeartBeatBlink(bool &led_state);
+
+    /**
+     * @brief Execute the heartbeat blink logic.
+     * @param t Current time in milliseconds.
+     * @param d Reference to delay until next execution (output).
+     * @param repeat Reference to repeat flag (output).
+     */
     void execute(uint64_t t, uint64_t &d, bool &repeat) override;
+
+    /**
+     * @brief State for heartbeat blink sequence.
+     */
     struct State {
         int v;
         uint64_t d;
@@ -61,12 +72,46 @@ struct HeartBeatBlink : public ITask {
     bool &m_led_state;
 };
 
+
+/**
+ * @brief Task for drawing and controlling the LED matrix display.
+ */
 struct DrawMatrix : public ITask {
+    /**
+     * @brief Construct a DrawMatrix task.
+     */
     DrawMatrix();
+
+    /**
+     * @brief Execute the matrix drawing logic.
+     * @param t Current time in milliseconds.
+     * @param d Reference to delay until next execution (output).
+     * @param repeat Reference to repeat flag (output).
+     */
     void execute(uint64_t t, uint64_t &d, bool &repeat) override;
+
+    /**
+     * @brief Set the display brightness.
+     * @param brightness Brightness value (0-255).
+     */
     void set_brightness(uint8_t brightness);
+
+    /**
+     * @brief Set the display color.
+     * @param color RGB color value.
+     */
     void set_color(uint32_t color);
+
+    /**
+     * @brief Set the display matrix from a 2D array.
+     * @param matrix_disp 2D array of pixel colors.
+     */
     void set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]);
+
+    /**
+     * @brief Set the display matrix from a JSON document.
+     * @param matrix_disp JSON document containing matrix data.
+     */
     void set_matrix(const JsonDocument &matrix_disp);
 
     Adafruit_NeoMatrix matrix;
@@ -75,18 +120,62 @@ struct DrawMatrix : public ITask {
     uint8_t pixel;
 };
 
+
+/**
+ * @brief Main application class for DrawMatrix server.
+ */
 class App : public IMatrixApp {
    public:
+    /**
+     * @brief Construct the App.
+     * @param server Reference to the server interface.
+     * @param ntp Reference to the NTP client.
+     */
     App(IServer &server, const NTPClient& ntp);
+
+    /**
+     * @brief Destructor.
+     */
     ~App();
 
+    /**
+     * @brief Run the main application loop.
+     */
     virtual void run() override;
+
+    /**
+     * @brief Handle the root web request.
+     */
     virtual void handle_root() override;
+
+    /**
+     * @brief Handle not found web requests.
+     */
     virtual void handle_not_found() override;
+
+    /**
+     * @brief Handle status LED control requests.
+     */
     virtual void handle_status_led_control() override;
+
+    /**
+     * @brief Handle GIF display requests.
+     */
     virtual void handle_gif() override;
+
+    /**
+     * @brief Handle display brightness setting requests.
+     */
     virtual void handle_set_display_brightness() override;
+
+    /**
+     * @brief Handle display color setting requests.
+     */
     virtual void handle_set_display_color() override;
+
+    /**
+     * @brief Handle display matrix setting requests.
+     */
     virtual void handle_set_display_matrix() override;
 
    private:
