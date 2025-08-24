@@ -2,7 +2,7 @@
  * ------------------------------------------------------------------------------------------------------------------- *
  *            DrawMatrix                                                                                               *
  * @file      ServerSys.hpp                                                                                            *
- * @brief     Core system definitions and interfaces for DrawMatrix server                                              *
+ * @brief     Core system definitions and interfaces for DrawMatrix server *
  * @date      Sat Aug 23 2025                                                                                          *
  * @author    Joao Carlos Bastos Portela (jcbastosportela@gmail.com)                                                   *
  * @copyright 2025 - 2025, Joao Carlos Bastos Portela                                                                  *
@@ -12,16 +12,17 @@
 #ifndef DRAWMATRIX_SERVERSYS
 #define DRAWMATRIX_SERVERSYS
 
-#include <Adafruit_NeoPixel.h>
 #include <Adafruit_NeoMatrix.h>
+#include <Adafruit_NeoPixel.h>
 #include <ArduinoJson.h>
 #include <NTPClient.h>
 
+#include <list>
 #include <cstdint>
 
 #include "IMatrixApp.hpp"
-#include "ITask.hpp"
 #include "IServer.hpp"
+#include "ITask.hpp"
 
 namespace ServerSys {
 
@@ -40,7 +41,6 @@ constexpr size_t N_COLS = MATRIX_WIDTH * N_TILES_X;
 constexpr size_t N_ROWS = MATRIX_HEIGHT * N_TILES_Y;
 // Total number of pixels (N_COLS * N_ROWS)
 constexpr size_t N_PIXELS = N_COLS * N_ROWS;
-
 
 /**
  * @brief Task for blinking a heartbeat LED.
@@ -71,7 +71,6 @@ struct HeartBeatBlink : public ITask {
     std::vector<State> states;
     bool &m_led_state;
 };
-
 
 /**
  * @brief Task for drawing and controlling the LED matrix display.
@@ -120,18 +119,17 @@ struct DrawMatrix : public ITask {
     uint8_t pixel;
 };
 
-
 /**
  * @brief Main application class for DrawMatrix server.
  */
 class App : public IMatrixApp {
-   public:
+  public:
     /**
      * @brief Construct the App.
      * @param server Reference to the server interface.
      * @param ntp Reference to the NTP client.
      */
-    App(IServer &server, const NTPClient& ntp);
+    App(IServer &server, const NTPClient &ntp);
 
     /**
      * @brief Destructor.
@@ -178,14 +176,27 @@ class App : public IMatrixApp {
      */
     virtual void handle_set_display_matrix() override;
 
-   private:
+    /**
+     * @brief Handle alarm setting requests.
+     */
+    virtual void handle_set_alarm() override;
+
+    /**
+     * @brief Enable or disable clock mode.
+     * @param enable True to enable clock mode, false to disable.
+     */
+    void clock_mode(bool enable);
+
+  private:
     IServer &m_server;
-    const NTPClient& m_ntp;
+    const NTPClient &m_ntp;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;
     bool m_status_led_state;
+    bool m_clock_mode;
+    std::list<String> m_alarm_times;
 };
 
-}  // namespace ServerSys
+} // namespace ServerSys
 
 #endif /* DRAWMATRIX_SERVERSYS */

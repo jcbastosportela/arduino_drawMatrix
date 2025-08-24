@@ -15,13 +15,14 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <NTPClient.h>
 #include <WiFiClient.h>
 #include <WiFiUdp.h>
-#include <NTPClient.h>
 
 #include <AsyncTasker.hpp>
 
 #include "DRAW_HTML.hpp"
+#include "ALARM_HTML.hpp"
 #include "ServerSys.hpp"
 
 // #define STASSID "your-ssid"
@@ -32,16 +33,16 @@
 #endif
 
 // --- Robustness: WiFi and server health check ---
-constexpr uint64_t WIFI_CHECK_INTERVAL = 10000;             // milliseconds
-constexpr uint64_t SERVER_CHECK_INTERVAL = 5000;            // milliseconds
-constexpr size_t MAX_NUM_TRIES_NO_CLIENT = 3;               // how many tries before giving up
-constexpr size_t NTP_SYNC_PERIOD = 60*1000;                 // milliseconds
+constexpr uint64_t WIFI_CHECK_INTERVAL = 10000;  // milliseconds
+constexpr uint64_t SERVER_CHECK_INTERVAL = 5000; // milliseconds
+constexpr size_t MAX_NUM_TRIES_NO_CLIENT = 3;    // how many tries before giving up
+constexpr size_t NTP_SYNC_PERIOD_MS = 60 * 1000; // milliseconds
 
-const char *ssid = STASSID;
-const char *password = STAPSK;
+const char *const ssid = STASSID;
+const char *const password = STAPSK;
 ESP8266WebServer server(80);
 WiFiUDP ntp_udp;
-NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2*60*60, NTP_SYNC_PERIOD);
+NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2 * 60 * 60, NTP_SYNC_PERIOD_MS);
 std::unique_ptr<ServerSys::App> app;
 
 // ======================================================================================
@@ -75,7 +76,37 @@ void setup(void) {
     server.on("/gif", std::bind(&ServerSys::App::handle_gif, app.get()));
     server.on("/set_display_matrix", HTTP_POST, std::bind(&ServerSys::App::handle_set_display_matrix, app.get()));
     server.on("/draw", []() { server.send(200, "text/html", DRAW_HTML); });
+    server.on("/alarm", []() { server.send(200, "text/html", ALARM_HTML); });
+    server.on("/set_alarm", std::bind(&ServerSys::App::handle_set_alarm, app.get()));
     server.onNotFound(std::bind(&ServerSys::App::handle_not_found, app.get()));
+    server.on("/info", []() {
+        StaticJsonDocument<512> doc;
+        doc["chip_id"] = ESP.getChipId();
+        doc["core_version"] = ESP.getCoreVersion();
+        doc["sdk_version"] = ESP.getSdkVersion();
+        doc["flash_chip_id"] = ESP.getFlashChipId();
+        doc["flash_chip_size"] = ESP.getFlashChipSize();
+        doc["sketch_size"] = ESP.getSketchSize();
+        doc["free_sketch_space"] = ESP.getFreeSketchSpace();
+        // doc["heap_size"] = ESP.getHeapSize(); // Uncomment if available
+        doc["free_heap"] = ESP.getFreeHeap();
+        doc["max_free_block_size"] = ESP.getMaxFreeBlockSize();
+        doc["heap_fragmentation"] = ESP.getHeapFragmentation();
+        doc["free_stack"] = ESP.getFreeContStack();
+        doc["cpu_freq_mhz"] = ESP.getCpuFreqMHz();
+        doc["boot_version"] = ESP.getBootVersion();
+        doc["boot_mode"] = ESP.getBootMode();
+        doc["reset_reason"] = ESP.getResetReason();
+
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+    });
+    server.on("/wifi_off", []() {
+        Serial.println("Turning WiFi off...");
+        WiFi.disconnect();
+        server.send(200, "text/plain", "WiFi turned off");
+    });
 
 #if 0
     /////////////////////////////////////////////////////////
@@ -136,77 +167,62 @@ void setup(void) {
     });
     // Hook examples
     /////////////////////////////////////////////////////////
-#endif  // 0
+#endif // 0
     server.begin();
     Serial.println("HTTP server started");
 
-    static bool no_client_for_too_long = false;
     AsyncTasker::schedule(
-        WIFI_CHECK_INTERVAL,
+        SERVER_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
-            Serial.printf("Checking WiFi\n");
-
-            if (WiFi.status() != WL_CONNECTED || no_client_for_too_long) {
-                Serial.println(no_client_for_too_long ? 
-                    "No client for too long! Attempting reconnect WiFi..." : 
-                    "WiFi disconnected! Attempting reconnect...");
-                WiFi.disconnect();
-                WiFi.begin(ssid, password);
+            static size_t n_fails = 0;
+            auto c = server.client();
+            if (c.connected()) {
+                n_fails = 0;
+                Serial.println("Client connected");
+                Serial.println(c.remoteIP());
+                app->clock_mode(false);
+            } else {
+                Serial.println("Client disconnected");
+                n_fails++;
+                if (n_fails > MAX_NUM_TRIES_NO_CLIENT) {
+                    Serial.println("No client connected");
+                    n_fails = 0;
+                    app->clock_mode(true);
+                }
             }
         },
         true);
 
-    // AsyncTasker::schedule(
-    //     SERVER_CHECK_INTERVAL,
-    //     [](uint64_t, uint64_t &, bool &) {
-    //         static size_t n_fails = 0;
-    //         static bool consecutive_failure = false;
-    //         auto c = server.client();
-    //         if (c.connected()) {
-    //             consecutive_failure = false;
-    //             Serial.println("Client connected");
-    //             Serial.println(c.remoteIP());
-    //         }else{
-    //             Serial.println("Client disconnected");
-    //             n_fails++;
-    //             if (n_fails > MAX_NUM_TRIES_NO_CLIENT) {
-    //                 Serial.println("Too many failed attempts, restarting server...");
-    //                 server.close();
-    //                 server.begin();
-    //                 n_fails = 0;
-    //             }
-    //             if (consecutive_failure) {
-    //                 no_client_for_too_long = true;
-    //             }
-    //             consecutive_failure = true;
-    //         }
-    //     },
-    //     true);
-
-    AsyncTasker::schedule(
-        5000,
-        [](uint64_t, uint64_t &, bool &) {
-            Serial.printf("Free heap %u bytes", ESP.getFreeHeap());
-        },
-        true
-    );
-
     ntpClient.begin();
-    // AsyncTasker::schedule(
-    //     1000,
-    //     [](uint64_t, uint64_t &, bool &) {
-    //         ntpClient.update();
-    //         Serial.printf("NTP time: %s\n", ntpClient.getFormattedTime().c_str());
-    //     },
-    //     true
-    // );
+    AsyncTasker::schedule(
+        WIFI_CHECK_INTERVAL,
+        [](uint64_t, uint64_t &, bool &) {
+            static size_t fail_sync_count = 0;
+            if (!ntpClient.update()) {
+                if ((WiFi.status() != WL_CONNECTED) ||
+                    (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1)))
+                {
+                    Serial.println("NTP sync failed. No WiFi? Wifi status: " + String(WiFi.status()) + ". Re-connecting...");
+                    fail_sync_count = 0;
+                    WiFi.disconnect();
+                    WiFi.begin(ssid, password); // Wait for connection
+                    while (WiFi.status() != WL_CONNECTED) {
+                        delay(500);
+                        Serial.print(".");
+                    }
+                }
+
+            } else {
+                fail_sync_count = 0;
+            }
+        },
+        true);
 }
 
 // ======================================================================================
 void loop(void) {
     server.handleClient();
     MDNS.update();
-    ntpClient.update();
     app->run();
     AsyncTasker::runEventLoop();
 }

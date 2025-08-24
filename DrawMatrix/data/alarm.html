@@ -1,0 +1,107 @@
+const char ALARM_HTML[] PROGMEM = R"html(
+<!-- This file starts with `R"html(` so it can be included as a Raw literal string in c++  -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>Set Alarm</title>
+  <style>
+    body {
+      background: #1a1a1a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #222;
+      border-radius: 12px;
+      padding: 32px 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      max-width: 350px;
+      width: 100%;
+    }
+    label {
+      font-size: 1.2em;
+      margin-bottom: 8px;
+    }
+    input[type="time"] {
+      font-size: 1.2em;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      background: #333;
+      color: #fff;
+      margin-bottom: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background: linear-gradient(45deg, #4776E6, #8E54E9);
+      color: #fff;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: linear-gradient(45deg, #3656b3, #6c3fcf);
+    }
+    .result {
+      margin-top: 16px;
+      font-size: 1em;
+      color: #4CAF50;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>⏰ Set Alarm Time</h2>
+    <label for="alarmTime">Alarm Time (HH:MM)</label>
+    <input type="time" id="alarmTime">
+    <button id="setAlarmBtn">Set Alarm</button>
+    <div class="result" id="result"></div>
+  </div>
+  <script>
+    document.getElementById('setAlarmBtn').addEventListener('click', function() {
+      const time = document.getElementById('alarmTime').value;
+      const resultDiv = document.getElementById('result');
+      if (!time) {
+        resultDiv.textContent = 'Please select a time for the alarm.';
+        resultDiv.style.color = '#d32f2f';
+        return;
+      }
+      fetch('/set_alarm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time: time })
+      })
+      .then(response => response.text())
+      .then(result => {
+        resultDiv.textContent = 'Alarm set for ' + time;
+        resultDiv.style.color = '#4CAF50';
+      })
+      .catch(error => {
+        resultDiv.textContent = 'Error setting alarm: ' + error;
+        resultDiv.style.color = '#d32f2f';
+      });
+    });
+  </script>
+</body>
+</html>
+)html";

@@ -1,3 +1,14 @@
+/**
+ * ------------------------------------------------------------------------------------------------------------------- *
+ *            DrawMatrix                                                                                               *
+ * @file      ServerSys.cpp                                                                                            *
+ * @brief     Implements server-side logic and matrix control for the DrawMatrix application.                          *
+ * @date      Sat Aug 24 2025                                                                                          *
+ * @author    Joao Carlos Bastos Portela (jcbastosportela@gmail.com)                                                   *
+ * @copyright 2025 - 2025, Joao Carlos Bastos Portela                                                                  *
+ *            MIT License                                                                                              *
+ * ------------------------------------------------------------------------------------------------------------------- *
+ */
 #include "ServerSys.hpp"
 
 #include <Adafruit_GFX.h>
@@ -7,19 +18,22 @@
 
 using namespace std::placeholders;
 constexpr int ws2812_pin = D2;
+constexpr uint8_t MIN_BRIGHTNESS = 6; // Minimum brightness level (0-255)
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
 App::App(IServer &server, const NTPClient &ntp)
-    : m_server(server),
-      m_status_led_state(true),
-      task_draw_matrix(),
-      task_heart_beat_blink(m_status_led_state),
+    : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state),
       m_ntp(ntp) {
     AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
     AsyncTasker::schedule(
         1000,
         [this](uint64_t t, uint64_t &d, bool &repeat) {
+            if (!m_clock_mode)
+                return;
+
+            task_draw_matrix.matrix.setBrightness(MIN_BRIGHTNESS); // Set brightness to 6 (0-255)
+
             static uint8_t h_pos_x = 0;
             static uint8_t m_pos_x = 4;
             static uint8_t s_pos_x = 8;
@@ -44,11 +58,11 @@ App::App(IServer &server, const NTPClient &ntp)
                 task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
                 task_draw_matrix.matrix.printf("%.2u ", cnt);
                 task_draw_matrix.matrix.show();
-                (++s_pos_x) > (N_COLS - 16) ? (s_pos_x = 0) : s_pos_x;
+                (++s_pos_x) > (N_COLS - 11) ? (s_pos_x = 0) : s_pos_x;
             });
 
-            (++h_pos_x) > (N_COLS - 16) ? (h_pos_x = 0) : h_pos_x;
-            (++m_pos_x) > (N_COLS - 16) ? (m_pos_x = 0) : m_pos_x;
+            (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
+            (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
 
             // task_draw_matrix.matrix.setCursor(0, 0);
             // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
@@ -69,10 +83,18 @@ App::App(IServer &server, const NTPClient &ntp)
             // });
 
             task_draw_matrix.matrix.show();
-            Serial.printf("NTP time: %s\n", m_ntp.getFormattedTime().c_str());
+            // Serial.printf("NTP time: %s\n", m_ntp.getFormattedTime().c_str());
         },
         true);
     // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
+    AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
+        Serial.printf("Checking alarms at NTP time: %s\n", m_ntp.getFormattedTime().c_str());
+        for (const auto &alarm_time : m_alarm_times) {
+            if (alarm_time == m_ntp.getFormattedTime().substring(0, 5)) {
+                Serial.printf("Alarm triggered for: %s\n", alarm_time.c_str());
+            }
+        }
+    }, true);
 }
 
 // --------------------------------------------------------------------------------------
@@ -84,6 +106,9 @@ void App::run() {
     // bool repeat = true;
     // task_draw_matrix.execute(0, v, repeat);  // Execute the draw matrix task immediately
 }
+
+// --------------------------------------------------------------------------------------
+void App::clock_mode(bool enable) { m_clock_mode = enable; }
 
 // --------------------------------------------------------------------------------------
 void App::handle_root() { m_server.send(200, "text/plain", "hello from esp8266!\r\n"); }
@@ -111,11 +136,11 @@ void App::handle_status_led_control() {
         error_message = "Missing 'value' argument";
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
     m_status_led_state = static_cast<bool>(m_server.arg("value").toInt());
 
-    digitalWrite(LED_BUILTIN, m_status_led_state ? LOW : HIGH);  // LED_BUILTIN is active LOW
+    digitalWrite(LED_BUILTIN, m_status_led_state ? LOW : HIGH); // LED_BUILTIN is active LOW
 
     JsonDocument jsonDoc;
     jsonDoc["status"] = m_status_led_state ? "LED is ON" : "LED is OFF";
@@ -146,8 +171,8 @@ HeartBeatBlink::HeartBeatBlink(bool &led_state) : m_led_state(led_state) {
     states.push_back({LOW, 100});
     states.push_back({HIGH, 200});
     states.push_back({LOW, 700});
-    pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
-    digitalWrite(LED_BUILTIN, HIGH);  // Turn the LED off by making the voltage HIGH
+    pinMode(LED_BUILTIN, OUTPUT);    // Initialize the LED_BUILTIN pin as an output
+    digitalWrite(LED_BUILTIN, HIGH); // Turn the LED off by making the voltage HIGH
 }
 
 // --------------------------------------------------------------------------------------
@@ -158,7 +183,7 @@ void App::handle_set_display_brightness() {
         error_message = "Missing 'value' argument";
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
     uint8_t brightness = static_cast<uint8_t>(m_server.arg("value").toInt());
     task_draw_matrix.set_brightness(brightness);
@@ -176,7 +201,7 @@ void App::handle_set_display_color() {
         error_message = "Missing 'color' or 'r', 'g', 'b', 'w' arguments";
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
     if (m_server.hasArg("color")) {
         color = static_cast<uint32_t>(m_server.arg("color").toInt());
@@ -189,7 +214,7 @@ void App::handle_set_display_color() {
         error_message = "Invalid color arguments";
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
 
     task_draw_matrix.set_color(color);
@@ -210,10 +235,10 @@ void App::handle_set_display_color() {
                             0x00,
                             0x00,
                             0x00,
-                            0x00,  // color table: black
+                            0x00, // color table: black
                             0x00,
                             0x00,
-                            0x00,  // color table: black (padding)
+                            0x00, // color table: black (padding)
                             0x2C,
                             0x00,
                             0x00,
@@ -245,9 +270,9 @@ void App::handle_set_display_color() {
                             0x00,
                             0x3B};
     // Set the color table to the requested color (first entry)
-    gif[16] = (color >> 16) & 0xFF;  // Red
-    gif[17] = (color >> 8) & 0xFF;   // Green
-    gif[18] = color & 0xFF;          // Blue
+    gif[16] = (color >> 16) & 0xFF; // Red
+    gif[17] = (color >> 8) & 0xFF;  // Green
+    gif[18] = color & 0xFF;         // Blue
 
     m_server.send(200, "image/gif", gif, sizeof(gif));
 }
@@ -259,7 +284,7 @@ void App::handle_set_display_matrix() {
         error_message = "No data received";
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
 
     JsonDocument doc;
@@ -267,7 +292,7 @@ void App::handle_set_display_matrix() {
         error_message = String("Invalid JSON: ") + String(error.c_str());
         Serial.printf(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If JSON parsing fails, send an error response
+        return; // If JSON parsing fails, send an error response
     }
 
     if (!doc.is<JsonArray>() || doc.size() != N_COLS || !doc[0].is<JsonArray>() || doc[0].size() != N_ROWS) {
@@ -276,11 +301,48 @@ void App::handle_set_display_matrix() {
                         String(doc[0].is<JsonArray>()) + ", doc[0].size()=" + String(doc[0].size());
         Serial.println(error_message.c_str());
         m_server.send(400, "text/plain", error_message.c_str());
-        return;  // If matrix format is invalid, send an error response
+        return; // If matrix format is invalid, send an error response
     }
 
     // Serial.println(doc.as<String>().c_str());  // Print the received matrix for debugging
     task_draw_matrix.set_matrix(doc);
+}
+
+// --------------------------------------------------------------------------------------
+
+void App::handle_set_alarm() {
+    String error_message;
+    if (!m_server.hasArg("plain")) {
+        error_message = "No data received";
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return; // If JSON parsing fails, send an error response
+    }
+
+    JsonDocument doc;
+    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+        error_message = String("Invalid JSON: ") + String(error.c_str());
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return; // If JSON parsing fails, send an error response
+    }
+
+    // Validate the JSON structure
+    if (!doc.is<JsonObject>() || !doc.containsKey("time")) {
+        error_message = "Invalid alarm format";
+        Serial.println(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return; // If alarm format is invalid, send an error response
+    }
+
+    // Extract the alarm time
+    String alarm_time = doc["time"];
+    Serial.printf("Setting alarm for: %s\n", alarm_time.c_str());
+
+    m_alarm_times.emplace_back(alarm_time.c_str());
+    // std::make_pair(alarm_time.substring(0, 2).toInt(), alarm_time.substring(3, 5).toInt()));
+
+    m_server.send(200, "text/plain", "Alarm set for " + alarm_time);
 }
 
 // --------------------------------------------------------------------------------------
@@ -302,10 +364,10 @@ DrawMatrix::DrawMatrix()
              (uint8_t)(NEO_TILE_TOP + NEO_TILE_RIGHT + NEO_TILE_COLUMNS + NEO_MATRIX_TOP + NEO_MATRIX_LEFT +
                        NEO_MATRIX_ROWS),
              (neoPixelType)(NEO_GRB + NEO_KHZ800)) {
-    matrix.begin();           // Initialize the NeoPixel strip
-    matrix.setBrightness(6);  // Set brightness to 15 (0-255)
-    matrix.clear();           // Clear the strip
-    matrix.show();            // Update the strip to show the changes
+    matrix.begin();                       // Initialize the NeoPixel strip
+    matrix.setBrightness(MIN_BRIGHTNESS); // Set brightness to 15 (0-255)
+    matrix.clear();                       // Clear the strip
+    matrix.show();                        // Update the strip to show the changes
 }
 
 // --------------------------------------------------------------------------------------
@@ -316,7 +378,7 @@ void DrawMatrix::set_brightness(uint8_t brightness) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_color(uint32_t color) {
-    matrix.fill(color, 0, N_PIXELS);  // Fill the matrix with the specified color
+    matrix.fill(color, 0, N_PIXELS); // Fill the matrix with the specified color
     matrix.show();
     this->color = color;
 }
@@ -375,9 +437,9 @@ constexpr std::array<size_t, N_COLS * N_ROWS> pixel_indices = {
 // --------------------------------------------------------------------------------------
 inline constexpr size_t pixel_index(size_t col, size_t row) {
     if (col >= N_COLS || row >= N_ROWS) {
-        return 0;  // Return 0 for out-of-bounds access
+        return 0; // Return 0 for out-of-bounds access
     }
-    return pixel_indices[row * N_COLS + col];  // Map (col, row) to physical LED index
+    return pixel_indices[row * N_COLS + col]; // Map (col, row) to physical LED index
 }
 
 // --------------------------------------------------------------------------------------
@@ -404,4 +466,4 @@ void DrawMatrix::set_matrix(const JsonDocument &matrix_disp) {
     matrix.show();
 }
 
-}  // namespace ServerSys
+} // namespace ServerSys

@@ -21,6 +21,11 @@ class IApp
 {
 public:
     /**
+     * @brief Virtual destructor for IApp.
+     */
+    virtual ~IApp() = default;
+
+    /**
      * @brief Run the main application loop.
      */
     virtual void run() = 0;
