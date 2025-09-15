@@ -8,6 +8,8 @@
                 "${workspaceFolder}/libraries/Adafruit_BusIO/",
                 "${workspaceFolder}/libraries/Adafruit_GFX_Library/",
                 "${workspaceFolder}/libraries/Adafruit_NeoMatrix/",
+                "${workspaceFolder}/libraries/DFRobotDFPlayerMini/",
+                "${workspaceFolder}/libraries/EspSoftwareSerial/",
                 "${workspaceFolder}/libraries/*",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/cores/esp8266",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/variants/d1_mini/",

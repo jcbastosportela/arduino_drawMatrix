@@ -21,8 +21,9 @@
 
 #include <AsyncTasker.hpp>
 
-#include "DRAW_HTML.hpp"
 #include "ALARM_HTML.hpp"
+#include "DRAW_HTML.hpp"
+#include "MusicPlayer.hpp"
 #include "ServerSys.hpp"
 
 // #define STASSID "your-ssid"
@@ -44,10 +45,14 @@ ESP8266WebServer server(80);
 WiFiUDP ntp_udp;
 NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2 * 60 * 60, NTP_SYNC_PERIOD_MS);
 std::unique_ptr<ServerSys::App> app;
+constexpr uint8_t BUTTON_PLAY_PAUSE = D1; // GPIO pin for play/pause button
 
 // ======================================================================================
 void setup(void) {
     Serial.begin(115200);
+    MusicPlayer::init();
+    // set BUTTON_PLAY_PAUSE as digital input, pullup enabled
+    pinMode(BUTTON_PLAY_PAUSE, INPUT_PULLUP);
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     Serial.println("");
@@ -106,6 +111,25 @@ void setup(void) {
         Serial.println("Turning WiFi off...");
         WiFi.disconnect();
         server.send(200, "text/plain", "WiFi turned off");
+    });
+    server.on("/music_play", []() {
+        if(server.hasArg("track")) {
+            String trackStr = server.arg("track");
+            Serial.printf("Playing music track: %s\n", trackStr.c_str());
+            // convert to int
+            int trackInt = trackStr.toInt();
+            MusicPlayer::play(static_cast<MusicPlayer::MusicTrack>(trackInt));
+            server.send(200, "text/plain", "Playing track: " + trackStr);
+            return;
+        }
+        else { //pause/play toggle
+            MusicPlayer::pause();
+        }
+    });
+    server.on("/music_stop", []() {
+        Serial.println("Stopping music...");
+        MusicPlayer::stop();
+        server.send(200, "text/plain", "Music stopped");
     });
 
 #if 0
@@ -200,9 +224,9 @@ void setup(void) {
             static size_t fail_sync_count = 0;
             if (!ntpClient.update()) {
                 if ((WiFi.status() != WL_CONNECTED) ||
-                    (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1)))
-                {
-                    Serial.println("NTP sync failed. No WiFi? Wifi status: " + String(WiFi.status()) + ". Re-connecting...");
+                    (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1))) {
+                    Serial.println("NTP sync failed. No WiFi? Wifi status: " + String(WiFi.status()) +
+                                   ". Re-connecting...");
                     fail_sync_count = 0;
                     WiFi.disconnect();
                     WiFi.begin(ssid, password); // Wait for connection
@@ -217,6 +241,21 @@ void setup(void) {
             }
         },
         true);
+
+    // AsyncTasker::schedule(
+    //     500,
+    //     [](uint64_t, uint64_t &, bool &) {
+    //         static bool last_button_state = HIGH;
+    //         if (digitalRead(BUTTON_PLAY_PAUSE) == LOW && last_button_state == HIGH) {
+    //             if (MusicPlayer::get_state() != MusicPlayer::State::PLAYING) {
+    //                 MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
+    //             } else {
+    //                 MusicPlayer::stop();
+    //             }
+    //         }
+    //         last_button_state = digitalRead(BUTTON_PLAY_PAUSE);
+    //     },
+    //     true);
 }
 
 // ======================================================================================
