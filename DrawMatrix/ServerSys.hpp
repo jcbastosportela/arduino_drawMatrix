@@ -129,7 +129,7 @@ class App : public IMatrixApp {
      * @param server Reference to the server interface.
      * @param ntp Reference to the NTP client.
      */
-    App(IServer &server, const NTPClient &ntp);
+    App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_callback);
 
     /**
      * @brief Destructor.
@@ -195,6 +195,7 @@ class App : public IMatrixApp {
     bool m_status_led_state;
     bool m_clock_mode;
     std::list<String> m_alarm_times;
+    std::function<void()> m_alarm_callback;
 };
 
 } // namespace ServerSys

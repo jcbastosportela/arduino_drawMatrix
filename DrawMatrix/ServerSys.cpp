@@ -13,18 +13,47 @@
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
+#include <LittleFS.h>
 
 #include "AsyncTasker.hpp"
 
+namespace {
 using namespace std::placeholders;
 constexpr int ws2812_pin = D2;
 constexpr uint8_t MIN_BRIGHTNESS = 6; // Minimum brightness level (0-255)
+File alarms_file;
+}
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
-App::App(IServer &server, const NTPClient &ntp)
+App::App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_callback)
     : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state),
-      m_ntp(ntp) {
+      m_ntp(ntp), m_alarm_callback(alarm_callback) {
+
+    if (!LittleFS.begin()) {
+        Serial.println("Failed to mount LittleFS");
+    }
+    else {
+        Serial.println("LittleFS mounted successfully");
+        if(LittleFS.exists("/alarms.bin")) {
+            alarms_file = LittleFS.open("/alarms.bin", "r");
+            if (alarms_file) {
+                Serial.println("Reading alarms from /alarms.bin");
+                while (alarms_file.available()) {
+                    String line = alarms_file.readStringUntil('\n');
+                    line.trim();
+                    if (!line.isEmpty()) {
+                        m_alarm_times.push_back(line);
+                        Serial.printf("Loaded alarm time: %s\n", line.c_str());
+                    }
+                }
+                alarms_file.close();
+            } else {
+                Serial.println("Failed to open /alarms.bin for reading");
+            }
+        }
+    }
+
     AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
     AsyncTasker::schedule(
         1000,
@@ -92,6 +121,10 @@ App::App(IServer &server, const NTPClient &ntp)
         for (const auto &alarm_time : m_alarm_times) {
             if (alarm_time == m_ntp.getFormattedTime().substring(0, 5)) {
                 Serial.printf("Alarm triggered for: %s\n", alarm_time.c_str());
+                d = 60000;  // Delay next check by 60 seconds to avoid multiple triggers within the same minute
+                if (m_alarm_callback) {
+                    m_alarm_callback();
+                }
             }
         }
     }, true);
@@ -339,7 +372,19 @@ void App::handle_set_alarm() {
     String alarm_time = doc["time"];
     Serial.printf("Setting alarm for: %s\n", alarm_time.c_str());
 
+    // Save the alarm time to LittleFS
+    alarms_file = LittleFS.open("/alarms.bin", "a");
+    if (!alarms_file) {
+        error_message = "Failed to open /alarms.bin for writing";
+        Serial.println(error_message.c_str());
+        m_server.send(500, "text/plain", error_message.c_str());
+        return; // If file opening fails, send an error response
+    }
+    alarms_file.println(alarm_time);
     m_alarm_times.emplace_back(alarm_time.c_str());
+    alarms_file.close();
+    Serial.printf("Alarm time %s saved to /alarms.bin\n", alarm_time.c_str());
+    // Optionally, parse and store the alarm time as needed
     // std::make_pair(alarm_time.substring(0, 2).toInt(), alarm_time.substring(3, 5).toInt()));
 
     m_server.send(200, "text/plain", "Alarm set for " + alarm_time);

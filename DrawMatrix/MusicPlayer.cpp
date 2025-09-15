@@ -10,11 +10,10 @@
  * ------------------------------------------------------------------------------------------------------------------- *
  */
 #include "MusicPlayer.hpp"
-#include <cstdint>
 
 // clang-format off
-#include <SoftwareSerial.h> // needs to be before DFMiniMp3.h
-#include <DFMiniMp3.h>
+#include <SoftwareSerial.h>         // needs to be before DFMiniMp3.h
+#include <DFMiniMp3.h>              // this library seems to be more robust than DFRobotDFPlayerMini
 // #include <DFRobotDFPlayerMini.h>
 // clang-format on
 
@@ -164,6 +163,14 @@ void start_volume_change() {
 void stop_volume_change() {
     stop_volume_change_flag = true;
     increase_volume_flag ^= true;
+}
+
+// --------------------------------------------------------------------------------------
+void set_volume(uint8_t volume) {
+    if (volume > MAX_VOLUME) {
+        volume = MAX_VOLUME;
+    }
+    myDFPlayer.setVolume(volume);
 }
 
 // --------------------------------------------------------------------------------------

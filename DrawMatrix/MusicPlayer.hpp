@@ -13,6 +13,8 @@
 #ifndef DRAWMATRIX_MUSICPLAYER
 #define DRAWMATRIX_MUSICPLAYER
 
+#include <cstdint>
+
 namespace MusicPlayer {
 
 enum class MusicTrack {
@@ -28,6 +30,8 @@ enum class State {
     PAUSED
 };
 
+constexpr uint8_t MAX_VOLUME = 30; // DFPlayer max volume is 30
+
 void init();
 void run();
 void play(MusicTrack track);
@@ -36,6 +40,7 @@ void pause();
 void next();
 void start_volume_change();
 void stop_volume_change();
+void set_volume(uint8_t volume); // volume: 0-30
 State get_state();
 } // namespace MusicPlayer
 

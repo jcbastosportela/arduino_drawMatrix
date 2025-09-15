@@ -93,7 +93,11 @@ void setup(void) {
     WiFi.begin(ssid, password);
     Serial.println("");
 
-    app = std::make_unique<ServerSys::App>(server, ntpClient);
+    app = std::make_unique<ServerSys::App>(server, ntpClient, []() {
+        Serial.println("Alarm callback triggered!");
+        MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
+        MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME);  // Set volume to maximum
+    });
 
     // Wait for connection
     while (WiFi.status() != WL_CONNECTED) {
@@ -159,6 +163,8 @@ void setup(void) {
             return;
         } else { // pause/play toggle
             MusicPlayer::pause();
+            server.send(200, "text/plain", "Toggling play/pause");
+            return;
         }
     });
     server.on("/music_stop", []() {
