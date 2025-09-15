@@ -25,13 +25,17 @@ enum class MusicTrack {
 enum class State {
     STOPPED,
     PLAYING,
-    PAUSED,
+    PAUSED
 };
 
 void init();
+void run();
 void play(MusicTrack track);
 void stop();
 void pause();
+void next();
+void start_volume_change();
+void stop_volume_change();
 State get_state();
 } // namespace MusicPlayer
 

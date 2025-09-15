@@ -9,6 +9,7 @@
  *            MIT License                                                                                              *
  * ------------------------------------------------------------------------------------------------------------------- *
  */
+#include <map>
 #include <memory>
 
 #include <ArduinoJson.h>
@@ -16,6 +17,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <NTPClient.h>
+#include <OneButton.h>
 #include <WiFiClient.h>
 #include <WiFiUdp.h>
 
@@ -45,14 +47,48 @@ ESP8266WebServer server(80);
 WiFiUDP ntp_udp;
 NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2 * 60 * 60, NTP_SYNC_PERIOD_MS);
 std::unique_ptr<ServerSys::App> app;
+
 constexpr uint8_t BUTTON_PLAY_PAUSE = D1; // GPIO pin for play/pause button
+constexpr uint8_t BUTTON_CTRL = D6;       // GPIO pin for control button
+
+std::map<uint8_t, OneButton> buttons = {
+    {BUTTON_PLAY_PAUSE, OneButton(BUTTON_PLAY_PAUSE)},
+    {BUTTON_CTRL, OneButton(BUTTON_CTRL)},
+};
 
 // ======================================================================================
 void setup(void) {
     Serial.begin(115200);
     MusicPlayer::init();
-    // set BUTTON_PLAY_PAUSE as digital input, pullup enabled
-    pinMode(BUTTON_PLAY_PAUSE, INPUT_PULLUP);
+
+    // Configure buttons
+    buttons[BUTTON_PLAY_PAUSE].attachClick([]() {
+        if(MusicPlayer::get_state() == MusicPlayer::State::STOPPED) {
+            Serial.println("No track loaded, playing default track (MUSIC_NATURE)");
+            MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_NATURE);
+            return;
+        }
+        Serial.println("Play/Pause button clicked");
+        MusicPlayer::pause();
+    });
+    buttons[BUTTON_PLAY_PAUSE].attachLongPressStart([]() {
+        Serial.println("Play/Pause button long pressed");
+        MusicPlayer::stop();
+    });
+    buttons[BUTTON_PLAY_PAUSE].attachDoubleClick([](){
+        Serial.println("Play/Pause button double clicked");
+        MusicPlayer::next();
+    });
+
+    buttons[BUTTON_CTRL].attachLongPressStart([]() {
+        Serial.println("Control button long pressed");
+        MusicPlayer::start_volume_change();
+    });
+    buttons[BUTTON_CTRL].attachLongPressStop([]() {
+        Serial.println("Control button long pressed");
+        MusicPlayer::stop_volume_change();
+    });
+
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     Serial.println("");
@@ -113,7 +149,7 @@ void setup(void) {
         server.send(200, "text/plain", "WiFi turned off");
     });
     server.on("/music_play", []() {
-        if(server.hasArg("track")) {
+        if (server.hasArg("track")) {
             String trackStr = server.arg("track");
             Serial.printf("Playing music track: %s\n", trackStr.c_str());
             // convert to int
@@ -121,8 +157,7 @@ void setup(void) {
             MusicPlayer::play(static_cast<MusicPlayer::MusicTrack>(trackInt));
             server.send(200, "text/plain", "Playing track: " + trackStr);
             return;
-        }
-        else { //pause/play toggle
+        } else { // pause/play toggle
             MusicPlayer::pause();
         }
     });
@@ -241,21 +276,6 @@ void setup(void) {
             }
         },
         true);
-
-    // AsyncTasker::schedule(
-    //     500,
-    //     [](uint64_t, uint64_t &, bool &) {
-    //         static bool last_button_state = HIGH;
-    //         if (digitalRead(BUTTON_PLAY_PAUSE) == LOW && last_button_state == HIGH) {
-    //             if (MusicPlayer::get_state() != MusicPlayer::State::PLAYING) {
-    //                 MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
-    //             } else {
-    //                 MusicPlayer::stop();
-    //             }
-    //         }
-    //         last_button_state = digitalRead(BUTTON_PLAY_PAUSE);
-    //     },
-    //     true);
 }
 
 // ======================================================================================
@@ -263,5 +283,8 @@ void loop(void) {
     server.handleClient();
     MDNS.update();
     app->run();
+    for(auto& [_, button] : buttons) {
+        button.tick();
+    }
     AsyncTasker::runEventLoop();
 }

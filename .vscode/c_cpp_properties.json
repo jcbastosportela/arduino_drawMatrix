@@ -9,6 +9,8 @@
                 "${workspaceFolder}/libraries/Adafruit_GFX_Library/",
                 "${workspaceFolder}/libraries/Adafruit_NeoMatrix/",
                 "${workspaceFolder}/libraries/DFRobotDFPlayerMini/",
+                "${workspaceFolder}/libraries/DFPlayer_Mini_Mp3_by_Makuna/src/",
+                "${workspaceFolder}/libraries/OneButton/src/",
                 "${workspaceFolder}/libraries/EspSoftwareSerial/",
                 "${workspaceFolder}/libraries/*",
                 "/home/portela/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/cores/esp8266",
