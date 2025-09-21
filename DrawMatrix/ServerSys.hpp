@@ -182,10 +182,32 @@ class App : public IMatrixApp {
     virtual void handle_set_alarm() override;
 
     /**
+     * @brief Handle request to list all alarms
+     */
+    virtual void handle_list_alarms();
+
+    /**
+     * @brief Handle request to delete an alarm
+     */
+    virtual void handle_delete_alarm();
+
+    /**
+     * @brief Handle request to modify an alarm
+     */
+    virtual void handle_modify_alarm();
+
+    /**
      * @brief Enable or disable clock mode.
      * @param enable True to enable clock mode, false to disable.
      */
     void clock_mode(bool enable);
+
+  private:
+    /**
+     * @brief Save all alarms to file
+     * @return true if successful, false otherwise
+     */
+    bool save_alarms_to_file();
 
   private:
     /**
@@ -197,6 +219,10 @@ class App : public IMatrixApp {
         
         bool isActiveOnDay(int day) const {
             return (days & (1 << day)) != 0;
+        }
+
+        bool operator==(const AlarmConfig& other) const {
+            return time == other.time && days == other.days;
         }
     };
     

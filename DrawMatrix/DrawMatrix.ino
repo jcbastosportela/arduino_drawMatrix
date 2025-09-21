@@ -121,7 +121,10 @@ void setup(void) {
     server.on("/gif", std::bind(&ServerSys::App::handle_gif, app.get()));
     server.on("/set_display_matrix", HTTP_POST, std::bind(&ServerSys::App::handle_set_display_matrix, app.get()));
     server.on("/draw", []() { server.send(200, "text/html", DRAW_HTML); });
-    server.on("/alarm", []() { server.send(200, "text/html", ALARM_HTML); });
+    server.on("/alarm", []() { server.send(200, "text/html", ALARM_HTML); });    // Register HTTP handlers for alarm management
+    server.on("/list-alarms", HTTP_GET, std::bind(&ServerSys::App::handle_list_alarms, app.get()));
+    server.on("/delete-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_delete_alarm, app.get()));
+    server.on("/modify-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_modify_alarm, app.get()));
     server.on("/set_alarm", std::bind(&ServerSys::App::handle_set_alarm, app.get()));
     server.onNotFound(std::bind(&ServerSys::App::handle_not_found, app.get()));
     server.on("/info", []() {

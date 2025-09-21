@@ -409,20 +409,18 @@ void App::handle_set_alarm() {
 
     Serial.printf("Setting alarm for: %s (days: 0x%02X)\n", alarm.time.c_str(), alarm.days);
 
-    // Save the alarm to LittleFS
-    alarms_file = LittleFS.open("/alarms.bin", "a");
-    if (!alarms_file) {
-        error_message = "Failed to open /alarms.bin for writing";
+    // Add alarm to memory list
+    m_alarms.push_back(alarm);
+
+    // Save all alarms to file
+    if (!save_alarms_to_file()) {
+        // If save fails, remove the alarm from memory
+        m_alarms.pop_back();
+        error_message = "Failed to save alarm";
         Serial.println(error_message.c_str());
         m_server.send(500, "text/plain", error_message.c_str());
         return; // If file opening fails, send an error response
     }
-    
-    // Save in format: "HH:MM,days_bitfield"
-    alarms_file.printf("%s,%d\n", alarm.time.c_str(), alarm.days);
-    m_alarms.push_back(alarm);
-    alarms_file.close();
-    Serial.printf("Alarm saved to /alarms.bin\n");
 
     String response = "Alarm set for " + alarm.time;
     response += " on days: ";
@@ -436,6 +434,161 @@ void App::handle_set_alarm() {
         }
     }
     m_server.send(200, "text/plain", response);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_list_alarms() {
+    Serial.println("Listing alarms");
+    JsonDocument doc;
+    JsonArray alarmsArray = doc.to<JsonArray>();
+    
+    for (const auto& alarm : m_alarms) {
+        JsonObject alarmObj = alarmsArray.createNestedObject();
+        alarmObj["time"] = alarm.time;
+        
+        // Convert bitfield back to array
+        JsonArray daysArray = alarmObj.createNestedArray("days");
+        for (int i = 0; i < 7; i++) {
+            if (alarm.isActiveOnDay(i)) {
+                daysArray.add(i);
+            }
+        }
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    m_server.send(200, "application/json", response);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_delete_alarm() {
+    String error_message;
+    if (!m_server.hasArg("plain")) {
+        error_message = "No data received";
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    JsonDocument doc;
+    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+        error_message = String("Invalid JSON: ") + String(error.c_str());
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    if (!doc.containsKey("time")) {
+        error_message = "Missing time parameter";
+        Serial.println(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    String timeToDelete = doc["time"].as<String>();
+    
+    // Find and remove the alarm
+    auto it = std::find_if(m_alarms.begin(), m_alarms.end(),
+        [&timeToDelete](const AlarmConfig& alarm) { return alarm.time == timeToDelete; });
+    
+    if (it == m_alarms.end()) {
+        error_message = "Alarm not found";
+        Serial.println(error_message.c_str());
+        m_server.send(404, "text/plain", error_message.c_str());
+        return;
+    }
+
+    m_alarms.erase(it);
+    
+    // Save updated alarms list
+    if (!save_alarms_to_file()) {
+        error_message = "Failed to save changes";
+        Serial.println(error_message.c_str());
+        m_server.send(500, "text/plain", error_message.c_str());
+        return;
+    }
+
+    m_server.send(200, "text/plain", "Alarm deleted successfully");
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_modify_alarm() {
+    String error_message;
+    if (!m_server.hasArg("plain")) {
+        error_message = "No data received";
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    JsonDocument doc;
+    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+        error_message = String("Invalid JSON: ") + String(error.c_str());
+        Serial.printf(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    if (!doc.containsKey("oldTime") || !doc.containsKey("time")) {
+        error_message = "Missing oldTime or time parameter";
+        Serial.println(error_message.c_str());
+        m_server.send(400, "text/plain", error_message.c_str());
+        return;
+    }
+
+    String oldTime = doc["oldTime"].as<String>();
+    
+    // Find the alarm to modify
+    auto it = std::find_if(m_alarms.begin(), m_alarms.end(),
+        [&oldTime](const AlarmConfig& alarm) { return alarm.time == oldTime; });
+    
+    if (it == m_alarms.end()) {
+        error_message = "Alarm not found";
+        Serial.println(error_message.c_str());
+        m_server.send(404, "text/plain", error_message.c_str());
+        return;
+    }
+
+    // Update the alarm with new values
+    it->time = doc["time"].as<String>();
+    
+    // Update days if provided
+    if (doc.containsKey("days")) {
+        it->days = 0;
+        JsonArray days = doc["days"].as<JsonArray>();
+        for (JsonVariant day : days) {
+            it->days |= (1 << day.as<int>());
+        }
+    }
+    
+    // Save updated alarms list
+    if (!save_alarms_to_file()) {
+        error_message = "Failed to save changes";
+        Serial.println(error_message.c_str());
+        m_server.send(500, "text/plain", error_message.c_str());
+        return;
+    }
+
+    String response = "Alarm modified successfully";
+    m_server.send(200, "text/plain", response);
+}
+
+// --------------------------------------------------------------------------------------
+bool App::save_alarms_to_file() {
+    alarms_file = LittleFS.open("/alarms.bin", "w"); // Open in write mode (overwrites file)
+    if (!alarms_file) {
+        Serial.println("Failed to open /alarms.bin for writing");
+        return false;
+    }
+
+    // Write all alarms
+    for (const auto& alarm : m_alarms) {
+        alarms_file.printf("%s,%d\n", alarm.time.c_str(), alarm.days);
+    }
+
+    alarms_file.close();
+    Serial.println("Alarms saved to /alarms.bin");
+    return true;
 }
 
 // --------------------------------------------------------------------------------------

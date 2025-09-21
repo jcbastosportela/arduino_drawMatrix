@@ -91,6 +91,52 @@ const char ALARM_HTML[] PROGMEM = R"html(
       color: #4CAF50;
       min-height: 1.2em;
     }
+    .alarms-list {
+      width: 100%;
+      margin-top: 24px;
+    }
+    .alarm-item {
+      background: #333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .alarm-info {
+      flex-grow: 1;
+    }
+    .alarm-time {
+      font-size: 1.2em;
+      margin-bottom: 4px;
+    }
+    .alarm-days {
+      font-size: 0.9em;
+      color: #aaa;
+    }
+    .alarm-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .alarm-actions button {
+      margin: 0;
+      padding: 8px 12px;
+      font-size: 0.9em;
+      width: auto;
+    }
+    .delete-btn {
+      background: linear-gradient(45deg, #e64747, #e95454);
+    }
+    .delete-btn:hover {
+      background: linear-gradient(45deg, #b33636, #cf3f3f);
+    }
+    .modify-btn {
+      background: linear-gradient(45deg, #47e6a1, #54e9b8);
+    }
+    .modify-btn:hover {
+      background: linear-gradient(45deg, #36b380, #3fcf94);
+    }
   </style>
 </head>
 <body>
@@ -116,8 +162,79 @@ const char ALARM_HTML[] PROGMEM = R"html(
     </div>
     <button id="setAlarmBtn">Set Alarm</button>
     <div class="result" id="result"></div>
+    <div class="alarms-list" id="alarmsList"></div>
   </div>
   <script>
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    
+    // Function to format the days list for display
+    function formatDays(daysArray) {
+      return daysArray.map(d => dayNames[d]).join(', ');
+    }
+
+    // Function to load and display alarms
+    async function loadAlarms() {
+      try {
+        const response = await fetch('/list-alarms');
+        const alarms = await response.json();
+        const alarmsList = document.getElementById('alarmsList');
+        alarmsList.innerHTML = '';
+
+        alarms.forEach(alarm => {
+          const alarmItem = document.createElement('div');
+          alarmItem.className = 'alarm-item';
+          alarmItem.innerHTML = `
+            <div class="alarm-info">
+              <div class="alarm-time">${alarm.time}</div>
+              <div class="alarm-days">${formatDays(alarm.days)}</div>
+            </div>
+            <div class="alarm-actions">
+              <button class="modify-btn" onclick="modifyAlarm('${alarm.time}', ${JSON.stringify(alarm.days)})">Modify</button>
+              <button class="delete-btn" onclick="deleteAlarm('${alarm.time}')">Delete</button>
+            </div>
+          `;
+          alarmsList.appendChild(alarmItem);
+        });
+      } catch (error) {
+        console.error('Error loading alarms:', error);
+      }
+    }
+
+    // Function to delete an alarm
+    async function deleteAlarm(time) {
+      try {
+        const response = await fetch('/delete-alarm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ time })
+        });
+        
+        if (response.ok) {
+          loadAlarms(); // Refresh the list
+          document.getElementById('result').textContent = 'Alarm deleted successfully';
+          document.getElementById('result').style.color = '#4CAF50';
+        } else {
+          throw new Error('Failed to delete alarm');
+        }
+      } catch (error) {
+        document.getElementById('result').textContent = 'Error deleting alarm: ' + error;
+        document.getElementById('result').style.color = '#d32f2f';
+      }
+    }
+
+    // Function to modify an alarm
+    function modifyAlarm(time, days) {
+      document.getElementById('alarmTime').value = time;
+      days.forEach(day => {
+        const checkbox = document.querySelector(`.day-checkbox[value="${day}"]`);
+        if (checkbox) checkbox.checked = true;
+      });
+      deleteAlarm(time); // Remove the old alarm
+      window.scrollTo(0, 0); // Scroll to top to show the form
+    }
+    // Load alarms when page loads
+    loadAlarms();
+    
     document.getElementById('setAlarmBtn').addEventListener('click', function() {
       const time = document.getElementById('alarmTime').value;
       const resultDiv = document.getElementById('result');
@@ -153,6 +270,11 @@ const char ALARM_HTML[] PROGMEM = R"html(
       .then(result => {
         resultDiv.textContent = 'Alarm set for ' + time;
         resultDiv.style.color = '#4CAF50';
+        // Clear form
+        document.getElementById('alarmTime').value = '';
+        document.querySelectorAll('.day-checkbox').forEach(cb => cb.checked = false);
+        // Reload alarms list
+        loadAlarms();
       })
       .catch(error => {
         resultDiv.textContent = 'Error setting alarm: ' + error;
