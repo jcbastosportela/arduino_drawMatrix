@@ -25,3 +25,8 @@ The project itself is on the folder DrawMatrix. The workspace root is the arduin
 - all boards are assembled in a way that the top-left corner of each board is the origin on that board (LED address 0 on the board)
 - The 2nd board is below the 1st, the 3rd below the 2nd and the 4th is on the left of the 1st, the pattern repeats
 - The last WS2812B-64 (12th board) is on the bottom-left corner
+
+## Documentation
+- Doxygen javadoc style
+- Class methods are documented in header files (.h, .hpp, .hxx) at declaration and are NOT documented in source files (.cpp, .cxx, .c) at implementation
+- Module functions are documented in the corresponding .cpp file, at declaration.

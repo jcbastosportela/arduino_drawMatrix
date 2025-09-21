@@ -1,0 +1,14 @@
+{
+  "name": "DFMiniMp3",
+  "keywords": "DFPlayer, MP3, Arduino",
+  "description": "Library for the DFPlayer Mini Mp3 module.",
+  "homepage": "https://github.com/Makuna/DFMiniMp3/wiki",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Makuna/DFMiniMp3"
+  },
+  "version": "1.2.3",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
+

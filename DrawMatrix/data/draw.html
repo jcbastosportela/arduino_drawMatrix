@@ -352,7 +352,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
   </style>
   <script>
   const rows = 32, cols = 24;
-  let matrix = Array.from({ length: rows }, () => Array(cols).fill('#000000'));
+  let matrix = Array.from({ length: rows }, () => Array(cols).fill(0x000000));
     const table = document.getElementById('matrix');
     const redSlider = document.getElementById('red');
     const statusIndicator = document.getElementById('statusIndicator');
@@ -373,11 +373,8 @@ const char DRAW_HTML[] PROGMEM = R"html(
       const r = parseInt(redSlider.value);
       const g = parseInt(greenSlider.value);
       const b = parseInt(blueSlider.value);
-      const color = '#' + 
-        (r < 16 ? '0' : '') + r.toString(16) +
-        (g < 16 ? '0' : '') + g.toString(16) +
-        (b < 16 ? '0' : '') + b.toString(16);
-      fillButton.style.backgroundColor = color;
+      const color = (r << 16) | (g << 8) | b;
+      fillButton.style.backgroundColor = '#' + color.toString(16).padStart(6, '0');
       redValue.textContent = r;
       greenValue.textContent = g;
       blueValue.textContent = b;
@@ -472,7 +469,8 @@ const char DRAW_HTML[] PROGMEM = R"html(
         const tr = document.createElement('tr');
         for (let x = 0; x < rows; x++) {
           const td = document.createElement('td');
-          td.style.backgroundColor = matrix[x][y];
+          // Convert integer color to hex string for display
+          td.style.backgroundColor = '#' + matrix[x][y].toString(16).padStart(6, '0');
           // Mouse events
           td.addEventListener('mousedown', (e) => {
             isPainting = true;
@@ -568,11 +566,11 @@ const char DRAW_HTML[] PROGMEM = R"html(
     }
 
     function paintCell(cell, visualRow, visualCol) {
-  // Standard orientation: x is col, y is row
-  const color = updateColor();
-  matrix[visualRow][visualCol] = color;
-  cell.style.backgroundColor = color;
-  sendMatrixDebounced();
+      // Standard orientation: x is col, y is row
+      const color = updateColor();
+      matrix[visualRow][visualCol] = color;
+      cell.style.backgroundColor = '#' + color.toString(16).padStart(6, '0');
+      sendMatrixDebounced();
     }
 
     // Handle mouse events
@@ -633,7 +631,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     function clearMatrix() {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          matrix[r][c] = '#000000';
+          matrix[r][c] = 0x000000;
         }
       }
       renderMatrixTable();
@@ -690,10 +688,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
             const r = imgData[idx];
             const g = imgData[idx + 1];
             const b = imgData[idx + 2];
-            matrix[x][y] = '#' +
-              r.toString(16).padStart(2, '0') +
-              g.toString(16).padStart(2, '0') +
-              b.toString(16).padStart(2, '0');
+            matrix[x][y] = (r << 16) | (g << 8) | b;
           }
         }
         renderMatrixTable();

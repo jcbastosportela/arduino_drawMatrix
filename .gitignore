@@ -2,3 +2,4 @@
 libraries/**/examples/**
 libraries/**/extras/**
 credentials.hpp
+build/
