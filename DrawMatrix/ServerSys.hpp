@@ -188,13 +188,25 @@ class App : public IMatrixApp {
     void clock_mode(bool enable);
 
   private:
+    /**
+     * @brief Structure to hold alarm configuration
+     */
+    struct AlarmConfig {
+        String time;        // Time in HH:MM format
+        uint8_t days;      // Bitfield for days (bit 0 = Sunday, bit 1 = Monday, etc.)
+        
+        bool isActiveOnDay(int day) const {
+            return (days & (1 << day)) != 0;
+        }
+    };
+    
     IServer &m_server;
     const NTPClient &m_ntp;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;
     bool m_status_led_state;
     bool m_clock_mode;
-    std::list<String> m_alarm_times;
+    std::list<AlarmConfig> m_alarms;
     std::function<void()> m_alarm_callback;
 };
 

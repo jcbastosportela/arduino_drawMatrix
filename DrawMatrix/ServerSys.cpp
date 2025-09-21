@@ -12,7 +12,11 @@
 #include "ServerSys.hpp"
 
 #include <Adafruit_GFX.h>
-#include <Arduino.h>
+#ifdef UNIT_TEST
+    #include "ArduinoFake.h"
+#else
+    #include "Arduino.h"
+#endif
 #include <LittleFS.h>
 
 #include "AsyncTasker.hpp"
@@ -43,8 +47,23 @@ App::App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_call
                     String line = alarms_file.readStringUntil('\n');
                     line.trim();
                     if (!line.isEmpty()) {
-                        m_alarm_times.push_back(line);
-                        Serial.printf("Loaded alarm time: %s\n", line.c_str());
+                        // Try to parse new format (time,days)
+                        int commaPos = line.indexOf(',');
+                        AlarmConfig alarm;
+                        
+                        if (commaPos != -1) {
+                            // New format
+                            alarm.time = line.substring(0, commaPos);
+                            alarm.days = (uint8_t)line.substring(commaPos + 1).toInt();
+                        } else {
+                            // Old format - assume all days
+                            alarm.time = line;
+                            alarm.days = 0x7F; // All days enabled
+                        }
+                        
+                        m_alarms.push_back(alarm);
+                        Serial.printf("Loaded alarm: time=%s, days=0x%02X\n", 
+                            alarm.time.c_str(), alarm.days);
                     }
                 }
                 alarms_file.close();
@@ -117,10 +136,15 @@ App::App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_call
         true);
     // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
     AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
-        Serial.printf("Checking alarms at NTP time: %s\n", m_ntp.getFormattedTime().c_str());
-        for (const auto &alarm_time : m_alarm_times) {
-            if (alarm_time == m_ntp.getFormattedTime().substring(0, 5)) {
-                Serial.printf("Alarm triggered for: %s\n", alarm_time.c_str());
+        String current_time = m_ntp.getFormattedTime().substring(0, 5);
+        int current_day = m_ntp.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        
+        Serial.printf("Checking alarms at NTP time: %s (day: %d)\n", current_time.c_str(), current_day);
+        
+        for (const auto &alarm : m_alarms) {
+            if (alarm.time == current_time && alarm.isActiveOnDay(current_day)) {
+                Serial.printf("Alarm triggered for: %s (days: 0x%02X)\n", 
+                    alarm.time.c_str(), alarm.days);
                 d = 60000;  // Delay next check by 60 seconds to avoid multiple triggers within the same minute
                 if (m_alarm_callback) {
                     m_alarm_callback();
@@ -368,11 +392,24 @@ void App::handle_set_alarm() {
         return; // If alarm format is invalid, send an error response
     }
 
-    // Extract the alarm time
-    String alarm_time = doc["time"];
-    Serial.printf("Setting alarm for: %s\n", alarm_time.c_str());
+    // Extract the alarm time and days
+    AlarmConfig alarm;
+    alarm.time = doc["time"].as<String>();
+    
+    // Convert days array to bitfield
+    alarm.days = 0;
+    if (doc.containsKey("days")) {
+        JsonArray days = doc["days"].as<JsonArray>();
+        for (JsonVariant day : days) {
+            alarm.days |= (1 << day.as<int>());
+        }
+    } else {
+        alarm.days = 0x7F; // All days if not specified
+    }
 
-    // Save the alarm time to LittleFS
+    Serial.printf("Setting alarm for: %s (days: 0x%02X)\n", alarm.time.c_str(), alarm.days);
+
+    // Save the alarm to LittleFS
     alarms_file = LittleFS.open("/alarms.bin", "a");
     if (!alarms_file) {
         error_message = "Failed to open /alarms.bin for writing";
@@ -380,14 +417,25 @@ void App::handle_set_alarm() {
         m_server.send(500, "text/plain", error_message.c_str());
         return; // If file opening fails, send an error response
     }
-    alarms_file.println(alarm_time);
-    m_alarm_times.emplace_back(alarm_time.c_str());
+    
+    // Save in format: "HH:MM,days_bitfield"
+    alarms_file.printf("%s,%d\n", alarm.time.c_str(), alarm.days);
+    m_alarms.push_back(alarm);
     alarms_file.close();
-    Serial.printf("Alarm time %s saved to /alarms.bin\n", alarm_time.c_str());
-    // Optionally, parse and store the alarm time as needed
-    // std::make_pair(alarm_time.substring(0, 2).toInt(), alarm_time.substring(3, 5).toInt()));
+    Serial.printf("Alarm saved to /alarms.bin\n");
 
-    m_server.send(200, "text/plain", "Alarm set for " + alarm_time);
+    String response = "Alarm set for " + alarm.time;
+    response += " on days: ";
+    const char* day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    bool first = true;
+    for (int i = 0; i < 7; i++) {
+        if (alarm.isActiveOnDay(i)) {
+            if (!first) response += ", ";
+            response += day_names[i];
+            first = false;
+        }
+    }
+    m_server.send(200, "text/plain", response);
 }
 
 // --------------------------------------------------------------------------------------

@@ -61,6 +61,30 @@ const char ALARM_HTML[] PROGMEM = R"html(
     button:hover {
       background: linear-gradient(45deg, #3656b3, #6c3fcf);
     }
+    .days-container {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 16px 0;
+      width: 100%;
+    }
+    .day-checkbox {
+      display: none;
+    }
+    .day-label {
+      background: #333;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+      font-size: 0.9em;
+    }
+    .day-checkbox:checked + .day-label {
+      background: linear-gradient(45deg, #4776E6, #8E54E9);
+    }
     .result {
       margin-top: 16px;
       font-size: 1em;
@@ -74,6 +98,22 @@ const char ALARM_HTML[] PROGMEM = R"html(
     <h2>⏰ Set Alarm Time</h2>
     <label for="alarmTime">Alarm Time (HH:MM)</label>
     <input type="time" id="alarmTime">
+    <div class="days-container">
+      <input type="checkbox" id="mon" class="day-checkbox" value="1">
+      <label for="mon" class="day-label">Mon</label>
+      <input type="checkbox" id="tue" class="day-checkbox" value="2">
+      <label for="tue" class="day-label">Tue</label>
+      <input type="checkbox" id="wed" class="day-checkbox" value="3">
+      <label for="wed" class="day-label">Wed</label>
+      <input type="checkbox" id="thu" class="day-checkbox" value="4">
+      <label for="thu" class="day-label">Thu</label>
+      <input type="checkbox" id="fri" class="day-checkbox" value="5">
+      <label for="fri" class="day-label">Fri</label>
+      <input type="checkbox" id="sat" class="day-checkbox" value="6">
+      <label for="sat" class="day-label">Sat</label>
+      <input type="checkbox" id="sun" class="day-checkbox" value="0">
+      <label for="sun" class="day-label">Sun</label>
+    </div>
     <button id="setAlarmBtn">Set Alarm</button>
     <div class="result" id="result"></div>
   </div>
@@ -86,10 +126,28 @@ const char ALARM_HTML[] PROGMEM = R"html(
         resultDiv.style.color = '#d32f2f';
         return;
       }
+
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const checkbox = document.querySelector(`.day-checkbox[value="${i}"]`);
+        if (checkbox && checkbox.checked) {
+          days.push(i);
+        }
+      }
+
+      if (days.length === 0) {
+        resultDiv.textContent = 'Please select at least one day for the alarm.';
+        resultDiv.style.color = '#d32f2f';
+        return;
+      }
+
       fetch('/set_alarm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ time: time })
+        body: JSON.stringify({ 
+          time: time,
+          days: days 
+        })
       })
       .then(response => response.text())
       .then(result => {
