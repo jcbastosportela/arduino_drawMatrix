@@ -147,6 +147,21 @@ class App : public IMatrixApp {
     virtual void handle_root() override;
 
     /**
+     * @brief Handle draw page requests
+     */
+    virtual void handle_draw();
+
+    /**
+     * @brief Handle music page requests
+     */
+    virtual void handle_music();
+    
+    /**
+     * @brief Handle alarm page requests
+     */
+    virtual void handle_alarm();
+
+    /**
      * @brief Handle not found web requests.
      */
     virtual void handle_not_found() override;

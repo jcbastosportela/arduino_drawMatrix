@@ -12,12 +12,13 @@
 #include "ServerSys.hpp"
 
 #include <Adafruit_GFX.h>
-#ifdef UNIT_TEST
-    #include "ArduinoFake.h"
-#else
-    #include "Arduino.h"
-#endif
+#include "Arduino.h"
 #include <LittleFS.h>
+
+#include "ALARM_HTML.hpp"
+#include "DRAW_HTML.hpp"
+#include "MUSIC_HTML.hpp"
+#include "INDEX_HTML.hpp"
 
 #include "AsyncTasker.hpp"
 
@@ -73,7 +74,7 @@ App::App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_call
         }
     }
 
-    AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
+    // AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
     AsyncTasker::schedule(
         1000,
         [this](uint64_t t, uint64_t &d, bool &repeat) {
@@ -168,7 +169,28 @@ void App::run() {
 void App::clock_mode(bool enable) { m_clock_mode = enable; }
 
 // --------------------------------------------------------------------------------------
-void App::handle_root() { m_server.send(200, "text/plain", "hello from esp8266!\r\n"); }
+void App::handle_root() { 
+    // extern const char INDEX_HTML[] PROGMEM;
+    m_server.send(200, "text/html", INDEX_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_draw() {
+    // extern const char DRAW_HTML[] PROGMEM;
+    m_server.send(200, "text/html", DRAW_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_music() {
+    // extern const char MUSIC_HTML[] PROGMEM;
+    m_server.send(200, "text/html", MUSIC_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_alarm() {
+    // extern const char ALARM_HTML[] PROGMEM;
+    m_server.send(200, "text/html", ALARM_HTML);
+}
 
 // --------------------------------------------------------------------------------------
 void App::handle_not_found() {

@@ -23,8 +23,6 @@
 
 #include <AsyncTasker.hpp>
 
-#include "ALARM_HTML.hpp"
-#include "DRAW_HTML.hpp"
 #include "MusicPlayer.hpp"
 #include "ServerSys.hpp"
 
@@ -115,13 +113,15 @@ void setup(void) {
     }
 
     server.on("/", std::bind(&ServerSys::App::handle_root, app.get()));
+    server.on("/draw", std::bind(&ServerSys::App::handle_draw, app.get()));
+    server.on("/alarm", std::bind(&ServerSys::App::handle_alarm, app.get()));
+    server.on("/music", std::bind(&ServerSys::App::handle_music, app.get()));
+
     server.on("/status_led_control", std::bind(&ServerSys::App::handle_status_led_control, app.get()));
     server.on("/set_display_brightness", std::bind(&ServerSys::App::handle_set_display_brightness, app.get()));
     server.on("/set_display_color", std::bind(&ServerSys::App::handle_set_display_color, app.get()));
     server.on("/gif", std::bind(&ServerSys::App::handle_gif, app.get()));
     server.on("/set_display_matrix", HTTP_POST, std::bind(&ServerSys::App::handle_set_display_matrix, app.get()));
-    server.on("/draw", []() { server.send(200, "text/html", DRAW_HTML); });
-    server.on("/alarm", []() { server.send(200, "text/html", ALARM_HTML); });    // Register HTTP handlers for alarm management
     server.on("/list-alarms", HTTP_GET, std::bind(&ServerSys::App::handle_list_alarms, app.get()));
     server.on("/delete-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_delete_alarm, app.get()));
     server.on("/modify-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_modify_alarm, app.get()));

@@ -1,0 +1,92 @@
+const char INDEX_HTML[] PROGMEM = R"html(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>LED Matrix Control</title>
+  <style>
+    body {
+      background: #1a1a1a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #222;
+      border-radius: 12px;
+      padding: 32px 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      max-width: 350px;
+      width: 100%;
+    }
+    h1 {
+      text-align: center;
+      margin: 0 0 16px 0;
+    }
+    .menu {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+    .menu-item {
+      background: #333;
+      border-radius: 8px;
+      padding: 24px;
+      text-decoration: none;
+      color: #fff;
+      text-align: center;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .menu-item:hover {
+      transform: translateY(-2px);
+      background: #444;
+    }
+    .icon {
+      font-size: 2.5em;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 1.2em;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .description {
+      font-size: 0.9em;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>LED Matrix Control</h1>
+    <div class="menu">
+      <a href="/draw" class="menu-item">
+        <div class="icon">🎨</div>
+        <div class="title">Draw</div>
+        <div class="description">Paint on the LED matrix in real-time</div>
+      </a>
+      <a href="/alarm" class="menu-item">
+        <div class="icon">⏰</div>
+        <div class="title">Alarms</div>
+        <div class="description">Set and manage your alarms</div>
+      </a>
+      <a href="/music" class="menu-item">
+        <div class="icon">🎵</div>
+        <div class="title">Music</div>
+        <div class="description">Control music playback (Coming Soon)</div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>
+)html";

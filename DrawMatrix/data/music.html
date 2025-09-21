@@ -1,0 +1,57 @@
+const char MUSIC_HTML[] PROGMEM = R"html(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>Music Player</title>
+  <style>
+    body {
+      background: #1a1a1a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #222;
+      border-radius: 12px;
+      padding: 32px 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      max-width: 350px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2em;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 1.2em;
+      color: #aaa;
+    }
+    .icon {
+      font-size: 4em;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🎵</div>
+    <h1>Music Player</h1>
+    <p>Coming soon! This feature is currently under construction.</p>
+    <p><a href="/" style="color: #4776E6;">Back to Home</a></p>
+  </div>
+</body>
+</html>
+)html";
