@@ -5,7 +5,8 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1a1a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="application-name" content="LED Draw">
@@ -28,19 +29,16 @@ const char DRAW_HTML[] PROGMEM = R"html(
       "client_mode": ["focus-existing", "auto"]
     },
     "icons": [{
-      "src": "data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\'%3E%3Crect width=\'512\' height=\'512\' fill=\'%232d2d2d\'/%3E%3Cpath d=\'M96 96h320v320H96z\' fill=\'%23222\'/%3E%3C/svg%3E",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }]
-  }'>
+      "src": "data:image/svg+xml,%3Csvg xmlns=\' http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\'%3E%3Crect
+    width=\'512\' height=\'512\' fill=\'%232d2d2d\'/%3E%3Cpath d=\'M96 96h320v320H96z\'
+    fill=\'%23222\'/%3E%3C/svg%3E", "sizes" : "512x512" , "type" : "image/svg+xml" , "purpose" : "any maskable" }] }'>
   <title>LED Matrix Draw</title>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(function() {});
+      navigator.serviceWorker.register('/sw.js').catch(function () { });
     }
     // Prevent pinch zoom
-    document.addEventListener('touchmove', function(e) {
+    document.addEventListener('touchmove', function (e) {
       if (e.scale !== 1) {
         e.preventDefault();
       }
@@ -53,7 +51,8 @@ const char DRAW_HTML[] PROGMEM = R"html(
       box-sizing: border-box;
     }
 
-    html, body {
+    html,
+    body {
       height: 100%;
       width: 100vw;
       max-width: 100vw;
@@ -206,27 +205,32 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
     input[type="range"] {
       width: 100%;
-      height: 32px;  /* Increased touch area */
+      height: 32px;
+      /* Increased touch area */
       background: linear-gradient(to bottom, transparent 8px, #222 8px, #222 24px, transparent 24px);
       border-radius: 3px;
       appearance: none;
       outline: none;
-      touch-action: pan-x;  /* Allow horizontal sliding */
+      touch-action: pan-x;
+      /* Allow horizontal sliding */
     }
 
     input[type="range"]::-webkit-slider-thumb {
       appearance: none;
-      width: 24px;  /* Larger thumb */
+      width: 24px;
+      /* Larger thumb */
       height: 24px;
       border-radius: 50%;
       cursor: pointer;
       transition: background 0.2s;
-      transform: translateY(-1px); /* Center the thumb */
+      transform: translateY(-1px);
+      /* Center the thumb */
     }
 
     #red::-webkit-slider-thumb {
       background: #ff0000;
     }
+
     #red::-webkit-slider-thumb:hover {
       background: #dd0000;
     }
@@ -234,6 +238,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     #green::-webkit-slider-thumb {
       background: #00ff00;
     }
+
     #green::-webkit-slider-thumb:hover {
       background: #00dd00;
     }
@@ -241,6 +246,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     #blue::-webkit-slider-thumb {
       background: #0000ff;
     }
+
     #blue::-webkit-slider-thumb:hover {
       background: #0000dd;
     }
@@ -248,6 +254,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
     #brightness::-webkit-slider-thumb {
       background: #4CAF50;
     }
+
     #brightness::-webkit-slider-thumb:hover {
       background: #45a049;
     }
@@ -283,7 +290,9 @@ const char DRAW_HTML[] PROGMEM = R"html(
     }
 
     @keyframes blink {
-      50% { opacity: 0.5; }
+      50% {
+        opacity: 0.5;
+      }
     }
 
     button {
@@ -313,9 +322,9 @@ const char DRAW_HTML[] PROGMEM = R"html(
   </style>
 </head>
 
-<body>    
-    <div class="status-indicator" id="statusIndicator" title="Server Status"></div>
-    <div class="controls">
+<body>
+  <div class="status-indicator" id="statusIndicator" title="Server Status"></div>
+  <div class="controls">
     <div class="color-controls">
       <div class="rgb-control">
         <label for="red">🔴 Red</label>
@@ -347,12 +356,13 @@ const char DRAW_HTML[] PROGMEM = R"html(
       <button onclick="document.getElementById('importImage').click()">🖼️ Import Image</button>
     </div>
     <table id="matrix"></table>
-  <button id="sendMatrix" onclick="sendMatrixDebounced()">✨ Update Matrix</button>
+    <button id="sendMatrix" onclick="sendMatrixDebounced()">✨ Update Matrix</button>
+    <button id="homeButton" onclick="location.href='/'">🏠 Home</button>
   </div>
   </style>
   <script>
-  const rows = 32, cols = 24;
-  let matrix = Array.from({ length: rows }, () => Array(cols).fill(0x000000));
+    const rows = 32, cols = 24;
+    let matrix = Array.from({ length: rows }, () => Array(cols).fill(0x000000));
     const table = document.getElementById('matrix');
     const redSlider = document.getElementById('red');
     const statusIndicator = document.getElementById('statusIndicator');
@@ -383,22 +393,22 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
     // Handle both touch and mouse events for sliders
     const sliders = [redSlider, greenSlider, blueSlider];
-    
+
     sliders.forEach(slider => {
       slider.addEventListener('input', updateColor);
-      
+
       // Touch event handling for mobile
-      slider.addEventListener('touchstart', function(e) {
+      slider.addEventListener('touchstart', function (e) {
         e.preventDefault();
         updateSliderValue(e, this);
       });
-      
-      slider.addEventListener('touchmove', function(e) {
+
+      slider.addEventListener('touchmove', function (e) {
         e.preventDefault();
         updateSliderValue(e, this);
       });
     });
-    
+
     function updateSliderValue(e, slider) {
       const touch = e.touches[0];
       const rect = slider.getBoundingClientRect();
@@ -407,7 +417,7 @@ const char DRAW_HTML[] PROGMEM = R"html(
       slider.value = Math.round(percentage * 255);
       updateColor();
     }
-    
+
     // Set initial color
     updateColor();
 
@@ -429,25 +439,25 @@ const char DRAW_HTML[] PROGMEM = R"html(
 
     // Touch event handling for mobile (like color sliders)
     let brightnessActive = false;
-    brightnessSlider.addEventListener('touchstart', function(e) {
+    brightnessSlider.addEventListener('touchstart', function (e) {
       e.preventDefault();
       brightnessActive = true;
       updateBrightnessSliderValue(e, this);
     });
-    brightnessSlider.addEventListener('touchmove', function(e) {
+    brightnessSlider.addEventListener('touchmove', function (e) {
       e.preventDefault();
       updateBrightnessSliderValue(e, this);
     });
-    brightnessSlider.addEventListener('mousedown', function(e) {
+    brightnessSlider.addEventListener('mousedown', function (e) {
       brightnessActive = true;
     });
-    document.addEventListener('touchend', function(e) {
+    document.addEventListener('touchend', function (e) {
       if (brightnessActive) {
         updateBrightness();
         brightnessActive = false;
       }
     });
-    document.addEventListener('mouseup', function(e) {
+    document.addEventListener('mouseup', function (e) {
       if (brightnessActive) {
         updateBrightness();
         brightnessActive = false;
@@ -555,13 +565,13 @@ const char DRAW_HTML[] PROGMEM = R"html(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(matrix)
         })
-        .then(() => {
-          pendingUpdates = [];
-        })
-        .catch(error => {
-          console.error('Error:', error);
-          checkConnection(); // Immediate connection check on error
-        });
+          .then(() => {
+            pendingUpdates = [];
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            checkConnection(); // Immediate connection check on error
+          });
       }, 100); // 100ms debounce
     }
 
@@ -647,58 +657,59 @@ const char DRAW_HTML[] PROGMEM = R"html(
     }
 
 
-  // Image import and conversion logic
-  const importImageInput = document.getElementById('importImage');
-  importImageInput.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      const img = new Image();
-      img.onload = function() {
-        // Create a canvas to resize the image with 'cover' logic
-        const canvas = document.createElement('canvas');
-        canvas.width = rows;
-        canvas.height = cols;
-        const ctx = canvas.getContext('2d');
-        // Calculate aspect ratios
-        const matrixAspect = rows / cols;
-        const imgAspect = img.width / img.height;
-        let drawWidth, drawHeight, offsetX, offsetY;
-        if (imgAspect > matrixAspect) {
-          // Image is wider than matrix: fill height, crop sides
-          drawHeight = cols;
-          drawWidth = img.width * (cols / img.height);
-          offsetX = (rows - drawWidth) / 2;
-          offsetY = 0;
-        } else {
-          // Image is taller than matrix: fill width, crop top/bottom
-          drawWidth = rows;
-          drawHeight = img.height * (rows / img.width);
-          offsetX = 0;
-          offsetY = (cols - drawHeight) / 2;
-        }
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, rows, cols);
-        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-        const imgData = ctx.getImageData(0, 0, rows, cols).data;
-        for (let y = 0; y < cols; y++) {
-          for (let x = 0; x < rows; x++) {
-            const idx = (y * rows + x) * 4;
-            const r = imgData[idx];
-            const g = imgData[idx + 1];
-            const b = imgData[idx + 2];
-            matrix[x][y] = (r << 16) | (g << 8) | b;
+    // Image import and conversion logic
+    const importImageInput = document.getElementById('importImage');
+    importImageInput.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const img = new Image();
+        img.onload = function () {
+          // Create a canvas to resize the image with 'cover' logic
+          const canvas = document.createElement('canvas');
+          canvas.width = rows;
+          canvas.height = cols;
+          const ctx = canvas.getContext('2d');
+          // Calculate aspect ratios
+          const matrixAspect = rows / cols;
+          const imgAspect = img.width / img.height;
+          let drawWidth, drawHeight, offsetX, offsetY;
+          if (imgAspect > matrixAspect) {
+            // Image is wider than matrix: fill height, crop sides
+            drawHeight = cols;
+            drawWidth = img.width * (cols / img.height);
+            offsetX = (rows - drawWidth) / 2;
+            offsetY = 0;
+          } else {
+            // Image is taller than matrix: fill width, crop top/bottom
+            drawWidth = rows;
+            drawHeight = img.height * (rows / img.width);
+            offsetX = 0;
+            offsetY = (cols - drawHeight) / 2;
           }
-        }
-        renderMatrixTable();
-        sendMatrixDebounced();
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, rows, cols);
+          ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+          const imgData = ctx.getImageData(0, 0, rows, cols).data;
+          for (let y = 0; y < cols; y++) {
+            for (let x = 0; x < rows; x++) {
+              const idx = (y * rows + x) * 4;
+              const r = imgData[idx];
+              const g = imgData[idx + 1];
+              const b = imgData[idx + 2];
+              matrix[x][y] = (r << 16) | (g << 8) | b;
+            }
+          }
+          renderMatrixTable();
+          sendMatrixDebounced();
+        };
+        img.src = ev.target.result;
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
+      reader.readAsDataURL(file);
+    });
   </script>
 </body>
+
 </html>
 )html";

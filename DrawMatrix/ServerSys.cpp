@@ -160,29 +160,24 @@ App::~App() {}
 
 // --------------------------------------------------------------------------------------
 void App::run() {
-    // uint64_t v=0;
-    // bool repeat = true;
-    // task_draw_matrix.execute(0, v, repeat);  // Execute the draw matrix task immediately
+    // Nothing to do here for now
 }
 
 // --------------------------------------------------------------------------------------
 void App::clock_mode(bool enable) { m_clock_mode = enable; }
 
 // --------------------------------------------------------------------------------------
-void App::handle_root() { 
-    // extern const char INDEX_HTML[] PROGMEM;
+void App::handle_root() {
     m_server.send(200, "text/html", INDEX_HTML);
 }
 
 // --------------------------------------------------------------------------------------
 void App::handle_draw() {
-    // extern const char DRAW_HTML[] PROGMEM;
     m_server.send(200, "text/html", DRAW_HTML);
 }
 
 // --------------------------------------------------------------------------------------
 void App::handle_music() {
-    // extern const char MUSIC_HTML[] PROGMEM;
     m_server.send(200, "text/html", MUSIC_HTML);
 }
 
