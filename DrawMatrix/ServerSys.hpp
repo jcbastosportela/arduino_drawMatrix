@@ -126,10 +126,10 @@ class App : public IMatrixApp {
   public:
     /**
      * @brief Construct the App.
-     * @param server Reference to the server interface.
      * @param ntp Reference to the NTP client.
+     * @param alarm_callback Callback function for alarm events.
      */
-    App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_callback);
+    App(const NTPClient &ntp, std::function<void()> alarm_callback);
 
     /**
      * @brief Destructor.
@@ -144,72 +144,72 @@ class App : public IMatrixApp {
     /**
      * @brief Handle the root web request.
      */
-    virtual void handle_root() override;
+    virtual void handle_root(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle draw page requests
      */
-    virtual void handle_draw();
+    virtual void handle_draw(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle music page requests
      */
-    virtual void handle_music();
+    virtual void handle_music(AsyncWebServerRequest *request);
     
     /**
      * @brief Handle alarm page requests
      */
-    virtual void handle_alarm();
+    virtual void handle_alarm(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle not found web requests.
      */
-    virtual void handle_not_found() override;
+    virtual void handle_not_found(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle status LED control requests.
      */
-    virtual void handle_status_led_control() override;
+    virtual void handle_status_led_control(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle GIF display requests.
      */
-    virtual void handle_gif() override;
+    virtual void handle_gif(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle display brightness setting requests.
      */
-    virtual void handle_set_display_brightness() override;
+    virtual void handle_set_display_brightness(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle display color setting requests.
      */
-    virtual void handle_set_display_color() override;
+    virtual void handle_set_display_color(AsyncWebServerRequest *request) override;
 
     /**
      * @brief Handle display matrix setting requests.
      */
-    virtual void handle_set_display_matrix() override;
+    virtual void handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) override;
 
     /**
      * @brief Handle alarm setting requests.
      */
-    virtual void handle_set_alarm() override;
+    virtual void handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) override;
 
     /**
      * @brief Handle request to list all alarms
      */
-    virtual void handle_list_alarms();
+    virtual void handle_list_alarms(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle request to delete an alarm
      */
-    virtual void handle_delete_alarm();
+    virtual void handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
     /**
      * @brief Handle request to modify an alarm
      */
-    virtual void handle_modify_alarm();
+    virtual void handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
     /**
      * @brief Enable or disable clock mode.
@@ -241,7 +241,6 @@ class App : public IMatrixApp {
         }
     };
     
-    IServer &m_server;
     const NTPClient &m_ntp;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;

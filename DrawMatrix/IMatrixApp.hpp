@@ -13,6 +13,7 @@
 #define DRAWMATRIX_IMATRIXAPP
 
 #include <ArduinoJson.h>
+#include <ESPAsyncWebServer.h>
 
 #include <cstdint>
 
@@ -28,44 +29,44 @@ class IMatrixApp : public IApp {
     /**
      * @brief Handle the root web request.
      */
-    virtual void handle_root() = 0;
+    virtual void handle_root(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle not found web requests.
      */
-    virtual void handle_not_found() = 0;
+    virtual void handle_not_found(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle status LED control requests.
      */
-    virtual void handle_status_led_control() = 0;
+    virtual void handle_status_led_control(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle GIF display requests.
      */
-    virtual void handle_gif() = 0;
+    virtual void handle_gif(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle display brightness setting requests.
      */
-    virtual void handle_set_display_brightness() = 0;
+    virtual void handle_set_display_brightness(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle display color setting requests.
      */
-    virtual void handle_set_display_color() = 0;
+    virtual void handle_set_display_color(AsyncWebServerRequest *request) = 0;
 
     /**
      * @brief Handle display matrix setting requests.
      */
-    virtual void handle_set_display_matrix() = 0;
+    virtual void handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) = 0;
 
     /**
      * @brief Handle alarm setting requests.
      * 
      * This function is called when a client requests to set the alarm.
      */
-    virtual void handle_set_alarm() = 0;
+    virtual void handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) = 0;
 };
 
 #endif /* DRAWMATRIX_IMATRIXAPP */
