@@ -12,14 +12,14 @@
 #ifndef DRAWMATRIX_ISERVER
 #define DRAWMATRIX_ISERVER
 
-#include <ESP8266WebServer.h>
+#include <ESPAsyncWebServer.h>
 
 /**
  * @brief Type alias for the web server interface used in DrawMatrix.
  *
  * Lazy thing to do. A server interface should be defined to be passed to the App class,
- * but for now, we just use the ESP8266WebServer directly.
+ * but for now, we just use the AsyncWebServer directly.
  */
-using IServer = ESP8266WebServer;
+using IServer = AsyncWebServer;
 
 #endif /* DRAWMATRIX_ISERVER */

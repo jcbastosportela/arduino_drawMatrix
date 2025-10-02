@@ -27,12 +27,34 @@ using namespace std::placeholders;
 constexpr int ws2812_pin = D2;
 constexpr uint8_t MIN_BRIGHTNESS = 6; // Minimum brightness level (0-255)
 File alarms_file;
+
+/**
+ * @brief Helper function to collect body data from chunked POST requests (optimized version)
+ * @param data Pointer to current chunk data
+ * @param len Length of current chunk
+ * @param index Starting index of current chunk
+ * @param total Total expected length
+ * @param body Static string to accumulate data (passed by reference)
+ * @return true if all data has been received, false if still collecting
+ */
+bool collectBodyData(uint8_t *data, size_t len, size_t index, size_t total, String &body) {
+    if (index == 0) {
+        body = "";
+        body.reserve(total); // Pre-allocate memory to avoid reallocations
+    }
+    
+    // Append the chunk directly without byte-by-byte copying
+    body.concat((char*)data, len);
+    
+    // Return true only when we have received all data
+    return (index + len == total);
+}
 }
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
-App::App(IServer &server, const NTPClient &ntp, std::function<void()> alarm_callback)
-    : m_server(server), m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state),
+App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
+    : m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state),
       m_ntp(ntp), m_alarm_callback(alarm_callback) {
 
     if (!LittleFS.begin()) {
@@ -167,52 +189,52 @@ void App::run() {
 void App::clock_mode(bool enable) { m_clock_mode = enable; }
 
 // --------------------------------------------------------------------------------------
-void App::handle_root() {
-    m_server.send(200, "text/html", INDEX_HTML);
+void App::handle_root(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", INDEX_HTML);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_draw() {
-    m_server.send(200, "text/html", DRAW_HTML);
+void App::handle_draw(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", DRAW_HTML);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_music() {
-    m_server.send(200, "text/html", MUSIC_HTML);
+void App::handle_music(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", MUSIC_HTML);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_alarm() {
-    // extern const char ALARM_HTML[] PROGMEM;
-    m_server.send(200, "text/html", ALARM_HTML);
+void App::handle_alarm(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", ALARM_HTML);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_not_found() {
+void App::handle_not_found(AsyncWebServerRequest *request) {
     String message = "File Not Found\n\n";
     message += "URI: ";
-    message += m_server.uri();
+    message += request->url();
     message += "\nMethod: ";
-    message += (m_server.method() == HTTP_GET) ? "GET" : "POST";
+    message += (request->method() == HTTP_GET) ? "GET" : "POST";
     message += "\nArguments: ";
-    message += m_server.args();
+    message += request->params();
     message += "\n";
-    for (uint8_t i = 0; i < m_server.args(); i++) {
-        message += " " + m_server.argName(i) + ": " + m_server.arg(i) + "\n";
+    for (uint8_t i = 0; i < request->params(); i++) {
+        AsyncWebParameter* p = request->getParam(i);
+        message += " " + p->name() + ": " + p->value() + "\n";
     }
-    m_server.send(404, "text/plain", message);
+    request->send(404, "text/plain", message);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_status_led_control() {
+void App::handle_status_led_control(AsyncWebServerRequest *request) {
     String error_message;
-    if (!m_server.hasArg("value")) {
+    if (!request->hasParam("value")) {
         error_message = "Missing 'value' argument";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
-    m_status_led_state = static_cast<bool>(m_server.arg("value").toInt());
+    m_status_led_state = static_cast<bool>(request->getParam("value")->value().toInt());
 
     digitalWrite(LED_BUILTIN, m_status_led_state ? LOW : HIGH); // LED_BUILTIN is active LOW
 
@@ -220,11 +242,11 @@ void App::handle_status_led_control() {
     jsonDoc["status"] = m_status_led_state ? "LED is ON" : "LED is OFF";
     String response;
     serializeJson(jsonDoc, response);
-    m_server.send(200, "application/json", response);
+    request->send(200, "application/json", response);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_gif() {
+void App::handle_gif(AsyncWebServerRequest *request) {
     static const uint8_t gif[] PROGMEM = {0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x10, 0x00, 0x10, 0x00, 0x80, 0x01,
                                           0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x2c, 0x00, 0x00, 0x00, 0x00,
                                           0x10, 0x00, 0x10, 0x00, 0x00, 0x02, 0x19, 0x8c, 0x8f, 0xa9, 0xcb, 0x9d,
@@ -236,7 +258,7 @@ void App::handle_gif() {
     gif_colored[16] = millis() % 256;
     gif_colored[17] = millis() % 256;
     gif_colored[18] = millis() % 256;
-    m_server.send(200, "image/gif", gif_colored, sizeof(gif_colored));
+    request->send_P(200, "image/gif", gif_colored, sizeof(gif_colored));
 }
 
 // --------------------------------------------------------------------------------------
@@ -250,44 +272,44 @@ HeartBeatBlink::HeartBeatBlink(bool &led_state) : m_led_state(led_state) {
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_set_display_brightness() {
+void App::handle_set_display_brightness(AsyncWebServerRequest *request) {
     String error_message;
 
-    if (!m_server.hasArg("value")) {
+    if (!request->hasParam("value")) {
         error_message = "Missing 'value' argument";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
-    uint8_t brightness = static_cast<uint8_t>(m_server.arg("value").toInt());
+    uint8_t brightness = static_cast<uint8_t>(request->getParam("value")->value().toInt());
     task_draw_matrix.set_brightness(brightness);
-    m_server.send(200, "text/plain", "Brightness set to " + String(brightness));
+    request->send(200, "text/plain", "Brightness set to " + String(brightness));
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_set_display_color() {
+void App::handle_set_display_color(AsyncWebServerRequest *request) {
     String error_message;
 
     uint32_t color = 0;
     // color can be set via 'color' or via 'r', 'g', 'b', 'w'
-    if (!m_server.hasArg("color") && !m_server.hasArg("r") && !m_server.hasArg("g") && !m_server.hasArg("b") &&
-        !m_server.hasArg("w")) {
+    if (!request->hasParam("color") && !request->hasParam("r") && !request->hasParam("g") && !request->hasParam("b") &&
+        !request->hasParam("w")) {
         error_message = "Missing 'color' or 'r', 'g', 'b', 'w' arguments";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
-    if (m_server.hasArg("color")) {
-        color = static_cast<uint32_t>(m_server.arg("color").toInt());
-    } else if (m_server.hasArg("r") && m_server.hasArg("g") && m_server.hasArg("b")) {
-        color = (static_cast<uint8_t>(m_server.arg("w").toInt()) << 24) |
-                (static_cast<uint8_t>(m_server.arg("r").toInt()) << 16) |
-                (static_cast<uint8_t>(m_server.arg("g").toInt()) << 8) |
-                (static_cast<uint8_t>(m_server.arg("b").toInt()));
+    if (request->hasParam("color")) {
+        color = static_cast<uint32_t>(request->getParam("color")->value().toInt());
+    } else if (request->hasParam("r") && request->hasParam("g") && request->hasParam("b")) {
+        color = (static_cast<uint8_t>(request->getParam("w")->value().toInt()) << 24) |
+                (static_cast<uint8_t>(request->getParam("r")->value().toInt()) << 16) |
+                (static_cast<uint8_t>(request->getParam("g")->value().toInt()) << 8) |
+                (static_cast<uint8_t>(request->getParam("b")->value().toInt()));
     } else {
         error_message = "Invalid color arguments";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
 
@@ -348,24 +370,31 @@ void App::handle_set_display_color() {
     gif[17] = (color >> 8) & 0xFF;  // Green
     gif[18] = color & 0xFF;         // Blue
 
-    m_server.send(200, "image/gif", gif, sizeof(gif));
+    request->send_P(200, "image/gif", gif, sizeof(gif));
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_set_display_matrix() {
+void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    if (!m_server.hasArg("plain")) {
+    
+    // Collect body data using helper function
+    static String body;
+    if (!collectBodyData(data, len, index, total, body)) {
+        return; // Still collecting data
+    }
+
+    if (body.length() == 0) {
         error_message = "No data received";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
 
     JsonDocument doc;
-    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+    if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
 
@@ -374,30 +403,38 @@ void App::handle_set_display_matrix() {
                         ", doc.size()=" + String(doc.size()) + ", doc[0].is<JsonArray>()" +
                         String(doc[0].is<JsonArray>()) + ", doc[0].size()=" + String(doc[0].size());
         Serial.println(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If matrix format is invalid, send an error response
     }
 
     // Serial.println(doc.as<String>().c_str());  // Print the received matrix for debugging
     task_draw_matrix.set_matrix(doc);
+    request->send(200, "text/plain", "Matrix updated successfully");
 }
 
 // --------------------------------------------------------------------------------------
 
-void App::handle_set_alarm() {
+void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    if (!m_server.hasArg("plain")) {
+    
+    // Collect body data using helper function
+    static String body;
+    if (!collectBodyData(data, len, index, total, body)) {
+        return; // Still collecting data
+    }
+
+    if (body.length() == 0) {
         error_message = "No data received";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
 
     JsonDocument doc;
-    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+    if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
 
@@ -405,7 +442,7 @@ void App::handle_set_alarm() {
     if (!doc.is<JsonObject>() || !doc.containsKey("time")) {
         error_message = "Invalid alarm format";
         Serial.println(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return; // If alarm format is invalid, send an error response
     }
 
@@ -435,7 +472,7 @@ void App::handle_set_alarm() {
         m_alarms.pop_back();
         error_message = "Failed to save alarm";
         Serial.println(error_message.c_str());
-        m_server.send(500, "text/plain", error_message.c_str());
+        request->send(500, "text/plain", error_message.c_str());
         return; // If file opening fails, send an error response
     }
 
@@ -450,11 +487,11 @@ void App::handle_set_alarm() {
             first = false;
         }
     }
-    m_server.send(200, "text/plain", response);
+    request->send(200, "text/plain", response);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_list_alarms() {
+void App::handle_list_alarms(AsyncWebServerRequest *request) {
     Serial.println("Listing alarms");
     JsonDocument doc;
     JsonArray alarmsArray = doc.to<JsonArray>();
@@ -474,31 +511,38 @@ void App::handle_list_alarms() {
     
     String response;
     serializeJson(doc, response);
-    m_server.send(200, "application/json", response);
+    request->send(200, "application/json", response);
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_delete_alarm() {
+void App::handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    if (!m_server.hasArg("plain")) {
+    
+    // Collect body data using helper function
+    static String body;
+    if (!collectBodyData(data, len, index, total, body)) {
+        return; // Still collecting data
+    }
+
+    if (body.length() == 0) {
         error_message = "No data received";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     JsonDocument doc;
-    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+    if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     if (!doc.containsKey("time")) {
         error_message = "Missing time parameter";
         Serial.println(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
@@ -511,7 +555,7 @@ void App::handle_delete_alarm() {
     if (it == m_alarms.end()) {
         error_message = "Alarm not found";
         Serial.println(error_message.c_str());
-        m_server.send(404, "text/plain", error_message.c_str());
+        request->send(404, "text/plain", error_message.c_str());
         return;
     }
 
@@ -521,35 +565,42 @@ void App::handle_delete_alarm() {
     if (!save_alarms_to_file()) {
         error_message = "Failed to save changes";
         Serial.println(error_message.c_str());
-        m_server.send(500, "text/plain", error_message.c_str());
+        request->send(500, "text/plain", error_message.c_str());
         return;
     }
 
-    m_server.send(200, "text/plain", "Alarm deleted successfully");
+    request->send(200, "text/plain", "Alarm deleted successfully");
 }
 
 // --------------------------------------------------------------------------------------
-void App::handle_modify_alarm() {
+void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    if (!m_server.hasArg("plain")) {
+    
+    // Collect body data using helper function
+    static String body;
+    if (!collectBodyData(data, len, index, total, body)) {
+        return; // Still collecting data
+    }
+
+    if (body.length() == 0) {
         error_message = "No data received";
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     JsonDocument doc;
-    if (auto error = deserializeJson(doc, m_server.arg("plain"))) {
+    if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
         Serial.printf(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     if (!doc.containsKey("oldTime") || !doc.containsKey("time")) {
         error_message = "Missing oldTime or time parameter";
         Serial.println(error_message.c_str());
-        m_server.send(400, "text/plain", error_message.c_str());
+        request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
@@ -562,7 +613,7 @@ void App::handle_modify_alarm() {
     if (it == m_alarms.end()) {
         error_message = "Alarm not found";
         Serial.println(error_message.c_str());
-        m_server.send(404, "text/plain", error_message.c_str());
+        request->send(404, "text/plain", error_message.c_str());
         return;
     }
 
@@ -582,12 +633,12 @@ void App::handle_modify_alarm() {
     if (!save_alarms_to_file()) {
         error_message = "Failed to save changes";
         Serial.println(error_message.c_str());
-        m_server.send(500, "text/plain", error_message.c_str());
+        request->send(500, "text/plain", error_message.c_str());
         return;
     }
 
     String response = "Alarm modified successfully";
-    m_server.send(200, "text/plain", response);
+    request->send(200, "text/plain", response);
 }
 
 // --------------------------------------------------------------------------------------
@@ -707,7 +758,7 @@ inline constexpr size_t pixel_index(size_t col, size_t row) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]) {
-    Serial.println("Setting matrix from arrays");
+    // Serial.println("Setting matrix from arrays");
     for (int col = 0; col < N_COLS; col++) {
         for (int row = 0; row < N_ROWS; row++) {
             uint32_t color = matrix_disp[col][row];
@@ -719,7 +770,7 @@ void DrawMatrix::set_matrix(uint32_t matrix_disp[N_COLS][N_ROWS]) {
 
 // --------------------------------------------------------------------------------------
 void DrawMatrix::set_matrix(const JsonDocument &matrix_disp) {
-    Serial.println("Setting matrix from JSON document");
+    // Serial.println("Setting matrix from JSON document");
     for (size_t col = 0; col < N_COLS; col++) {
         for (size_t row = 0; row < N_ROWS; row++) {
             uint32_t rgb = matrix_disp[col][row].as<uint32_t>();

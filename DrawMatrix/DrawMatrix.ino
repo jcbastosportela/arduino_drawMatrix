@@ -13,7 +13,7 @@
 #include <memory>
 
 #include <ArduinoJson.h>
-#include <ESP8266WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <NTPClient.h>
@@ -41,10 +41,23 @@ constexpr size_t NTP_SYNC_PERIOD_MS = 60 * 1000; // milliseconds
 
 const char *const ssid = STASSID;
 const char *const password = STAPSK;
-ESP8266WebServer server(80);
+AsyncWebServer server(80);
 WiFiUDP ntp_udp;
 NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2 * 60 * 60, NTP_SYNC_PERIOD_MS);
 std::unique_ptr<ServerSys::App> app;
+
+// Global client activity tracking
+volatile unsigned long g_lastClientActivity = 0;
+volatile unsigned long g_lastDisplayActivity = 0;
+
+void updateClientActivity() {
+    g_lastClientActivity = millis();
+}
+
+void updateDisplayActivity() {
+    g_lastDisplayActivity = millis();
+    updateClientActivity(); // Display activity is also client activity
+}
 
 constexpr uint8_t BUTTON_PLAY_PAUSE = D1; // GPIO pin for play/pause button
 constexpr uint8_t BUTTON_CTRL = D6;       // GPIO pin for control button
@@ -91,7 +104,7 @@ void setup(void) {
     WiFi.begin(ssid, password);
     Serial.println("");
 
-    app = std::make_unique<ServerSys::App>(server, ntpClient, []() {
+    app = std::make_unique<ServerSys::App>(ntpClient, []() {
         Serial.println("Alarm callback triggered!");
         MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
         MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME);  // Set volume to maximum
@@ -112,22 +125,69 @@ void setup(void) {
         Serial.println("MDNS responder started");
     }
 
-    server.on("/", std::bind(&ServerSys::App::handle_root, app.get()));
-    server.on("/draw", std::bind(&ServerSys::App::handle_draw, app.get()));
-    server.on("/alarm", std::bind(&ServerSys::App::handle_alarm, app.get()));
-    server.on("/music", std::bind(&ServerSys::App::handle_music, app.get()));
+    server.on("/", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_root(request);
+    });
+    server.on("/draw", [](AsyncWebServerRequest *request){
+        updateDisplayActivity(); // Display-related - disable clock
+        app->handle_draw(request);
+    });
+    server.on("/alarm", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_alarm(request);
+    });
+    server.on("/music", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_music(request);
+    });
 
-    server.on("/status_led_control", std::bind(&ServerSys::App::handle_status_led_control, app.get()));
-    server.on("/set_display_brightness", std::bind(&ServerSys::App::handle_set_display_brightness, app.get()));
-    server.on("/set_display_color", std::bind(&ServerSys::App::handle_set_display_color, app.get()));
-    server.on("/gif", std::bind(&ServerSys::App::handle_gif, app.get()));
-    server.on("/set_display_matrix", HTTP_POST, std::bind(&ServerSys::App::handle_set_display_matrix, app.get()));
-    server.on("/list-alarms", HTTP_GET, std::bind(&ServerSys::App::handle_list_alarms, app.get()));
-    server.on("/delete-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_delete_alarm, app.get()));
-    server.on("/modify-alarm", HTTP_POST, std::bind(&ServerSys::App::handle_modify_alarm, app.get()));
-    server.on("/set_alarm", std::bind(&ServerSys::App::handle_set_alarm, app.get()));
-    server.onNotFound(std::bind(&ServerSys::App::handle_not_found, app.get()));
-    server.on("/info", []() {
+    server.on("/status_led_control", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_status_led_control(request);
+    });
+    server.on("/set_display_brightness", [](AsyncWebServerRequest *request){
+        updateDisplayActivity(); // Display-related - disable clock
+        app->handle_set_display_brightness(request);
+    });
+    server.on("/set_display_color", [](AsyncWebServerRequest *request){
+        updateDisplayActivity(); // Display-related - disable clock
+        app->handle_set_display_color(request);
+    });
+    server.on("/gif", [](AsyncWebServerRequest *request){
+        updateDisplayActivity(); // Display-related - disable clock
+        app->handle_gif(request);
+    });
+    server.on("/set_display_matrix", HTTP_POST, [](AsyncWebServerRequest *request){
+        updateDisplayActivity(); // Display-related - disable clock
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+        app->handle_set_display_matrix(request, data, len, index, total);
+    });
+    server.on("/list-alarms", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_list_alarms(request);
+    });
+    server.on("/delete-alarm", HTTP_POST, [](AsyncWebServerRequest *request){
+        updateClientActivity();
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+        app->handle_delete_alarm(request, data, len, index, total);
+    });
+    server.on("/modify-alarm", HTTP_POST, [](AsyncWebServerRequest *request){
+        updateClientActivity();
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+        app->handle_modify_alarm(request, data, len, index, total);
+    });
+    server.on("/set_alarm", HTTP_POST, [](AsyncWebServerRequest *request){
+        updateClientActivity();
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+        app->handle_set_alarm(request, data, len, index, total);
+    });
+    server.onNotFound([](AsyncWebServerRequest *request){
+        updateClientActivity();
+        app->handle_not_found(request);
+    });
+    server.on("/info", [](AsyncWebServerRequest *request) {
+        updateClientActivity(); // Info requests don't affect display
         StaticJsonDocument<512> doc;
         doc["chip_id"] = ESP.getChipId();
         doc["core_version"] = ESP.getCoreVersion();
@@ -148,32 +208,35 @@ void setup(void) {
 
         String json;
         serializeJson(doc, json);
-        server.send(200, "application/json", json);
+        request->send(200, "application/json", json);
     });
-    server.on("/wifi_off", []() {
+    server.on("/wifi_off", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
         Serial.println("Turning WiFi off...");
         WiFi.disconnect();
-        server.send(200, "text/plain", "WiFi turned off");
+        request->send(200, "text/plain", "WiFi turned off");
     });
-    server.on("/music_play", []() {
-        if (server.hasArg("track")) {
-            String trackStr = server.arg("track");
+    server.on("/music_play", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (request->hasParam("track")) {
+            String trackStr = request->getParam("track")->value();
             Serial.printf("Playing music track: %s\n", trackStr.c_str());
             // convert to int
             int trackInt = trackStr.toInt();
             MusicPlayer::play(static_cast<MusicPlayer::MusicTrack>(trackInt));
-            server.send(200, "text/plain", "Playing track: " + trackStr);
+            request->send(200, "text/plain", "Playing track: " + trackStr);
             return;
         } else { // pause/play toggle
             MusicPlayer::pause();
-            server.send(200, "text/plain", "Toggling play/pause");
+            request->send(200, "text/plain", "Toggling play/pause");
             return;
         }
     });
-    server.on("/music_stop", []() {
+    server.on("/music_stop", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
         Serial.println("Stopping music...");
         MusicPlayer::stop();
-        server.send(200, "text/plain", "Music stopped");
+        request->send(200, "text/plain", "Music stopped");
     });
 
 #if 0
@@ -243,17 +306,20 @@ void setup(void) {
         SERVER_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
             static size_t n_fails = 0;
-            auto c = server.client();
-            if (c.connected()) {
+            
+            // Check if we've had recent DISPLAY activity (not just any client activity)
+            unsigned long now = millis();
+            bool hasDisplayActivity = (now - g_lastDisplayActivity) < (SERVER_CHECK_INTERVAL * 2);
+            
+            if (hasDisplayActivity) {
                 n_fails = 0;
-                Serial.println("Client connected");
-                Serial.println(c.remoteIP());
+                Serial.println("Display activity detected - clock mode OFF");
                 app->clock_mode(false);
             } else {
-                Serial.println("Client disconnected");
+                Serial.println("No display activity");
                 n_fails++;
                 if (n_fails > MAX_NUM_TRIES_NO_CLIENT) {
-                    Serial.println("No client connected");
+                    Serial.println("No display activity - enabling clock mode");
                     n_fails = 0;
                     app->clock_mode(true);
                 }
@@ -289,7 +355,6 @@ void setup(void) {
 
 // ======================================================================================
 void loop(void) {
-    server.handleClient();
     MDNS.update();
     app->run();
     for(auto& [_, button] : buttons) {
