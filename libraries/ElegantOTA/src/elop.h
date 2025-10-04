@@ -3,6 +3,11 @@
 
 #include <Arduino.h>
 
-extern const uint8_t ELEGANT_HTML[10214];
+#define USE_ORIGINAL_ELEGANTOTA 0
 
+#if USE_ORIGINAL_ELEGANTOTA
+extern const uint8_t ELEGANT_HTML[10214];
+#else
+#include "elegantota_interface.html"
+#endif // USE_ORIGINAL_ELEGANTOTA
 #endif

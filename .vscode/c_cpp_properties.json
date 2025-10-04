@@ -32,7 +32,8 @@
                 "UNICODE",
                 "_UNICODE",
                 "ARDUINO=200",
-                "USING_RAWLITERAL_STRINGS=1"
+                "USING_RAWLITERAL_STRINGS=1",
+                // "ELEGANTOTA_USE_ASYNC_WEBSERVER=1"
                 // "MMU_ICACHE_SIZE=0x4000",
                 // "DEV_DEBUG_PRINT"
             ],

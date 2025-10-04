@@ -9,8 +9,35 @@
  *            MIT License                                                                                              *
  * ------------------------------------------------------------------------------------------------------------------- *
  */
+
+/*
+ * MEMORY CONFIGURATION NOTES:
+ *
+ * Arduino IDE Settings Required:
+ * - Tools → Board: "NodeMCU 1.0 (ESP-12E Module)" or equivalent
+ * - Tools → MMU: "16KB cache + 48KB IRAM" (CRITICAL for IRAM usage)
+ * - Tools → CPU Frequency: "160MHz"
+ * - Tools → Flash Size: "4MB (FS:2MB OTA:~1019KB)"
+ * - Tools → Debug Level: "None"
+ *
+ * These settings are NOT stored in workspace - must be set in Arduino IDE!
+ */
 #include <map>
 #include <memory>
+
+// Memory optimization defines - MUST be before library includes
+#define ASYNC_TCP_SSL_ENABLED 0
+#define ASYNCWEBSERVER_REGEX 0
+#define WS_MAX_QUEUED_MESSAGES 4
+#define DEFAULT_MAX_WS_CLIENTS 2
+
+// LWIP Low Memory Configuration - reduces TCP/IP stack IRAM usage
+// Note: Keep IGMP enabled for mDNS compatibility
+#define LWIP_IPV6 0
+#define TCP_MSS 536
+#define TCP_SND_BUF (2 * TCP_MSS)
+#define TCP_WND (2 * TCP_MSS)
+#define LWIP_TCP_KEEPALIVE 0
 
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
@@ -20,6 +47,8 @@
 #include <OneButton.h>
 #include <WiFiClient.h>
 #include <WiFiUdp.h>
+#include <ESPAsyncTCP.h>
+#include <ElegantOTA.h>
 
 #include <AsyncTasker.hpp>
 
@@ -113,7 +142,7 @@ void setup(void) {
     // Wait for connection
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        Serial.print(".");
+        Serial.print("*");
     }
     Serial.println("");
     Serial.print("Connected to ");
@@ -302,15 +331,19 @@ void setup(void) {
     server.begin();
     Serial.println("HTTP server started");
 
+    // Initialize AsyncElegantOTA
+    ElegantOTA.begin(&server);
+    Serial.println("OTA Update available at: http://" + WiFi.localIP().toString() + "/update");
+
     AsyncTasker::schedule(
         SERVER_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
             static size_t n_fails = 0;
-            
+
             // Check if we've had recent DISPLAY activity (not just any client activity)
             unsigned long now = millis();
             bool hasDisplayActivity = (now - g_lastDisplayActivity) < (SERVER_CHECK_INTERVAL * 2);
-            
+
             if (hasDisplayActivity) {
                 n_fails = 0;
                 Serial.println("Display activity detected - clock mode OFF");
