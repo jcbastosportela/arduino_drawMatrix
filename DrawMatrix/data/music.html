@@ -221,6 +221,21 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       cursor: pointer
     }
 
+    select.btn {
+      background: #333;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: .75rem;
+      min-width: 80px
+    }
+
+    select.btn:hover {
+      background: #3b3b3b
+    }
+
     .status-row {
       font-size: .6rem;
       color: var(--text-dim);
@@ -409,9 +424,23 @@ const char MUSIC_HTML[] PROGMEM = R"html(
     </aside>
     <main class='content'>
       <div class='panel'>
-        <div class='controls'><button id='playBtn' class='btn btn-primary' title='Play/Pause'>▶ / ⏸</button><button
-            id='prevBtn' class='btn' title='Previous'>⏮</button><button id='nextBtn' class='btn' title='Next'>⏭</button>
+        <div class='controls'><button id='playBtn' class='btn btn-primary' title='Play/Pause'>▶</button><button
+            id='stopBtn' class='btn' title='Stop'>⏹</button><button id='prevBtn' class='btn' title='Previous'>⏮</button><button id='nextBtn' class='btn' title='Next'>⏭</button>
           <div class='volume'>Vol <input id='volSlider' type='range' min='0' max='30' value='15'></div>
+          <select id='playbackMode' class='btn' title='Playback Mode'>
+            <option value='0'>Normal</option>
+            <option value='1'>Repeat All</option>
+            <option value='2'>Repeat One</option>
+            <option value='3'>Shuffle</option>
+          </select>
+          <select id='eqMode' class='btn' title='Equalizer'>
+            <option value='0'>Normal</option>
+            <option value='1'>Pop</option>
+            <option value='2'>Rock</option>
+            <option value='3'>Jazz</option>
+            <option value='4'>Classic</option>
+            <option value='5'>Bass</option>
+          </select>
           <div class='status-row' id='musicInfo'>Loading...</div>
         </div>
       </div>
@@ -474,7 +503,23 @@ const char MUSIC_HTML[] PROGMEM = R"html(
     function renderMusicInfo(data){
       const statusEl = document.getElementById('musicInfo');
       const lib = data.has_content_data ? 'Library: custom' : 'Library: device';
-      statusEl.innerHTML = `SD: ${data.sd_online? 'Online':'Offline'} • Folders: ${data.total_folders} • Tracks: ${data.total_tracks} • Folder ▶ ${data.current_folder||'-'} • Vol: ${data.volume} • ${lib}`;
+      const stateText = data.state === 1 ? 'Playing' : data.state === 2 ? 'Paused' : 'Stopped';
+      statusEl.innerHTML = `SD: ${data.sd_online? 'Online':'Offline'} • Folders: ${data.total_folders} • Tracks: ${data.total_tracks} • Folder ▶ ${data.current_folder||'-'} • Vol: ${data.volume} • ${stateText} • ${lib}`;
+
+      // Update play/pause button
+      const playBtn = document.getElementById('playBtn');
+      if(data.state === 1) { // Playing
+        playBtn.innerHTML = '⏸'; // Pause icon
+        playBtn.title = 'Pause';
+      } else { // Stopped or Paused
+        playBtn.innerHTML = '▶'; // Play icon
+        playBtn.title = 'Play';
+      }
+
+      // Update dropdowns
+      if(!window._playbackModeBusy) document.getElementById('playbackMode').value = data.playback_mode || 0;
+      if(!window._eqModeBusy) document.getElementById('eqMode').value = data.eq_mode || 0;
+
       foldersEl.innerHTML = '';
       if(data.folders){
         data.folders.forEach(f=>{
@@ -534,6 +579,7 @@ const char MUSIC_HTML[] PROGMEM = R"html(
 
     document.getElementById('refreshButton').addEventListener('click', ()=>{ fetchMusicInfo(); if(activeFolder) loadFolder(activeFolder); });
     document.getElementById('playBtn').addEventListener('click', ()=> fetch('/music_play').then(()=> fetchMusicInfo()));
+    document.getElementById('stopBtn').addEventListener('click', ()=> fetch('/music_stop').then(()=> fetchMusicInfo()));
     document.getElementById('prevBtn').addEventListener('click', ()=> fetch('/music_prev').then(()=> fetchMusicInfo()));
     document.getElementById('nextBtn').addEventListener('click', ()=> fetch('/music_next').then(()=> fetchMusicInfo()));
 
@@ -542,6 +588,24 @@ const char MUSIC_HTML[] PROGMEM = R"html(
     volSlider.addEventListener('pointerdown', ()=> window._volSliderBusy=true);
     volSlider.addEventListener('pointerup', e=>{ window._volSliderBusy=false; finishVol(e.target.value); });
     volSlider.addEventListener('change', e=>{ if(!window._volSliderBusy) finishVol(e.target.value); });
+
+    // Playback mode dropdown
+    const playbackMode = document.getElementById('playbackMode');
+    playbackMode.addEventListener('change', e=>{
+      window._playbackModeBusy=true;
+      fetch(`/music_set_playback_mode?mode=${e.target.value}`).then(()=>{
+        setTimeout(()=>{ window._playbackModeBusy=false; fetchMusicInfo(); }, 200);
+      });
+    });
+
+    // EQ mode dropdown
+    const eqMode = document.getElementById('eqMode');
+    eqMode.addEventListener('change', e=>{
+      window._eqModeBusy=true;
+      fetch(`/music_set_eq?eq=${e.target.value}`).then(()=>{
+        setTimeout(()=>{ window._eqModeBusy=false; fetchMusicInfo(); }, 200);
+      });
+    });
 
     document.getElementById('uploadBtn').addEventListener('click', async ()=>{
       const content = document.getElementById('jsonContent').value.trim();

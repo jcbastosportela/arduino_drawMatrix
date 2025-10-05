@@ -183,6 +183,9 @@ void setup(void) {
         doc["current_folder"] = MusicPlayer::current_folder();
         doc["volume"] = MusicPlayer::get_volume();
         doc["has_content_data"] = MusicPlayer::has_content_data();
+        doc["state"] = (int)MusicPlayer::get_state(); // 0=STOPPED, 1=PLAYING, 2=PAUSED
+        doc["playback_mode"] = (int)MusicPlayer::get_playback_mode();
+        doc["eq_mode"] = (int)MusicPlayer::get_eq_mode();
 
         JsonArray arr = doc.createNestedArray("folders");
 
@@ -418,6 +421,38 @@ void setup(void) {
         Serial.println("Stopping music...");
         MusicPlayer::stop();
         request->send(200, "text/plain", "Music stopped");
+    });
+
+    // Set playback mode: /music_set_playback_mode?mode=0 (0=normal, 1=repeat_all, 2=repeat_one, 3=shuffle)
+    server.on("/music_set_playback_mode", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("mode")) {
+            request->send(400, "text/plain", "Missing mode parameter");
+            return;
+        }
+        int mode = request->getParam("mode")->value().toInt();
+        if (mode < 0 || mode > 3) {
+            request->send(400, "text/plain", "Invalid mode (0-3)");
+            return;
+        }
+        MusicPlayer::set_playback_mode(static_cast<MusicPlayer::PlaybackMode>(mode));
+        request->send(200, "text/plain", "Playback mode set to " + String(mode));
+    });
+
+    // Set EQ mode: /music_set_eq?eq=0 (0=normal, 1=pop, 2=rock, 3=jazz, 4=classic, 5=bass)
+    server.on("/music_set_eq", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("eq")) {
+            request->send(400, "text/plain", "Missing eq parameter");
+            return;
+        }
+        int eq = request->getParam("eq")->value().toInt();
+        if (eq < 0 || eq > 5) {
+            request->send(400, "text/plain", "Invalid EQ (0-5)");
+            return;
+        }
+        MusicPlayer::set_eq_mode(static_cast<MusicPlayer::EQMode>(eq));
+        request->send(200, "text/plain", "EQ mode set to " + String(eq));
     });
 
 #if 0

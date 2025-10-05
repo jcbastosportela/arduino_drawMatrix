@@ -31,6 +31,22 @@ enum class State {
     PAUSED
 };
 
+enum class PlaybackMode {
+    NORMAL = 0,    // Play tracks in order, stop at end
+    REPEAT_ALL = 1, // Repeat entire folder
+    REPEAT_ONE = 2, // Repeat current track
+    SHUFFLE = 3     // Random order
+};
+
+enum class EQMode {
+    NORMAL = 0,
+    POP = 1,
+    ROCK = 2,
+    JAZZ = 3,
+    CLASSIC = 4,
+    BASS = 5
+};
+
 constexpr uint8_t MAX_VOLUME = 30; // DFPlayer max volume is 30
 
 void init();
@@ -45,6 +61,11 @@ void start_volume_change();
 void stop_volume_change();
 void set_volume(uint8_t volume); // volume: 0-30
 State get_state();
+// ----- Playback Mode & EQ Controls -----
+void set_playback_mode(PlaybackMode mode);
+PlaybackMode get_playback_mode();
+void set_eq_mode(EQMode mode);
+EQMode get_eq_mode();
 // ----- Utility helpers (non-blocking queries)
 uint16_t total_tracks();
 uint16_t total_folders();

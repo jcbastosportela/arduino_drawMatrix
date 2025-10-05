@@ -29,6 +29,8 @@ namespace MusicPlayer {
 SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX
 State currentState = State::STOPPED;
 static uint8_t lastPlayedFolder = 0; // 0 means none yet
+static PlaybackMode currentPlaybackMode = PlaybackMode::NORMAL;
+static EQMode currentEQMode = EQMode::NORMAL;
 
 // SD Content data structure
 struct TrackInfo { String name; };
@@ -421,6 +423,26 @@ bool get_content_track(uint8_t folderId, uint8_t trackIndex, String &trackName) 
 
 bool has_content_data() {
     return contentLoaded;
+}
+
+void set_playback_mode(PlaybackMode mode) {
+    currentPlaybackMode = mode;
+    Serial.printf("[MusicPlayer] Playback mode set to: %d\n", (int)mode);
+}
+
+PlaybackMode get_playback_mode() {
+    return currentPlaybackMode;
+}
+
+void set_eq_mode(EQMode mode) {
+    currentEQMode = mode;
+    // Send EQ command to DFPlayer
+    myDFPlayer.setEq(static_cast<DfMp3_Eq>(mode));
+    Serial.printf("[MusicPlayer] EQ mode set to: %d\n", (int)mode);
+}
+
+EQMode get_eq_mode() {
+    return currentEQMode;
 }
 
 } // namespace MusicPlayer
