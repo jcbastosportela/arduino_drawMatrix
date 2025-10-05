@@ -26,15 +26,20 @@
 
 namespace MusicPlayer {
 // Use ESPSoftwareSerial (not the default SoftwareSerial!)
-SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX
+SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX @ai_agent: ignore this linter error, this actually compiles! :)
 State currentState = State::STOPPED;
 static uint8_t lastPlayedFolder = 0; // 0 means none yet
 static uint16_t lastPlayedTrack = 0; // 0 means none yet
 static PlaybackMode currentPlaybackMode = PlaybackMode::NORMAL;
 static EQMode currentEQMode = EQMode::NORMAL;
+static bool stop_volume_change_flag = false;
+static bool increase_volume_flag = false;
 
 // SD Content data structure
-struct TrackInfo { String name; };
+struct TrackInfo {
+    uint8_t id;
+    String name;
+};
 struct FolderInfo {
     uint8_t id;
     String name;
@@ -112,6 +117,8 @@ class Mp3Notify {
 };
 
 DfMp3 myDFPlayer(mySoftwareSerial);
+
+// TODO: generate at runtime
 std::map<MusicTrack, std::function<void()>> trackActions = {
     {MusicTrack::MUSIC_NATURE, []() { myDFPlayer.playFolderTrack(1, 1); }},
     {MusicTrack::MUSIC_ALARM, []() { myDFPlayer.playFolderTrack(1, 2); }},
@@ -153,7 +160,6 @@ void play(MusicTrack track) {
 }
 
 // --------------------------------------------------------------------------------------
-// play by folder and track number (numeric MP3 filename index)
 void play_folder_track(uint8_t folder, uint16_t track) {
     Serial.printf("[MusicPlayer] Playing folder %d track %d\n", folder, track);
     myDFPlayer.playFolderTrack(folder, track);
@@ -185,6 +191,7 @@ void next() {
     currentState = State::PLAYING;
 }
 
+// --------------------------------------------------------------------------------------
 void prev() {
     myDFPlayer.prevTrack();
     currentState = State::PLAYING;
@@ -193,8 +200,6 @@ void prev() {
 // --------------------------------------------------------------------------------------
 State get_state() { return currentState; }
 
-static bool stop_volume_change_flag = false;
-static bool increase_volume_flag = false;
 // --------------------------------------------------------------------------------------
 void start_volume_change() {
     stop_volume_change_flag = false;
@@ -248,7 +253,7 @@ uint16_t total_folders() {
     if (contentLoaded) {
         return sdContent.size();
     }
-    // Fallback to DFPlayer query
+    // Fallback to DFPlayer query: NOTE: this does not work in some clone DF players, like mine :(
     return myDFPlayer.getTotalFolderCount();
 }
 
@@ -268,8 +273,6 @@ uint16_t tracks_in_folder(uint8_t folder) {
 
 // --------------------------------------------------------------------------------------
 bool sd_online() {
-    // ensure notifications processed
-    myDFPlayer.loop();
     return myDFPlayer.isOnline();
 }
 
@@ -286,6 +289,7 @@ uint16_t current_track() {
     return lastPlayedTrack;
 }
 
+// --------------------------------------------------------------------------------------
 uint8_t current_folder() {
     return lastPlayedFolder;
 }
@@ -295,7 +299,7 @@ uint8_t get_volume() {
     return myDFPlayer.getVolume();
 }
 
-// ----- SD Content Management --------------------------------------------------------
+// --------------------------------------------------------------------------------------
 bool load_sd_content() {
     if (!LittleFS.exists(SD_CONTENT_FILE)) {
         Serial.println("[MusicPlayer] No SD content file found");
@@ -308,9 +312,11 @@ bool load_sd_content() {
         return false;
     }
 
-    StaticJsonDocument<2048> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
+
+    Serial.print(doc.as<String>());
 
     if (error) {
         Serial.printf("[MusicPlayer] JSON parse error: %s\n", error.c_str());
@@ -327,6 +333,7 @@ bool load_sd_content() {
         JsonArray tracks = folderObj["tracks"];
         for (JsonObject trackObj : tracks) {
             TrackInfo track;
+            track.id = trackObj["id"];
             track.name = trackObj["name"].as<String>();
             folder.tracks.push_back(track);
         }
@@ -338,6 +345,7 @@ bool load_sd_content() {
     return true;
 }
 
+// --------------------------------------------------------------------------------------
 bool save_sd_content() {
     StaticJsonDocument<2048> doc;
     JsonArray folders = doc.createNestedArray("folders");
@@ -350,6 +358,7 @@ bool save_sd_content() {
         JsonArray tracks = folderObj.createNestedArray("tracks");
         for (const auto& track : folder.tracks) {
             JsonObject trackObj = tracks.createNestedObject();
+            trackObj["id"] = track.id;
             trackObj["name"] = track.name;
         }
     }
@@ -367,6 +376,7 @@ bool save_sd_content() {
     return true;
 }
 
+// --------------------------------------------------------------------------------------
 bool upload_sd_content(const String& jsonContent) {
     StaticJsonDocument<2048> doc;
     DeserializationError error = deserializeJson(doc, jsonContent);
@@ -386,6 +396,7 @@ bool upload_sd_content(const String& jsonContent) {
         JsonArray tracks = folderObj["tracks"];
         for (JsonObject trackObj : tracks) {
             TrackInfo track;
+            track.id = trackObj["id"];
             track.name = trackObj["name"].as<String>();
             folder.tracks.push_back(track);
         }
@@ -401,10 +412,12 @@ bool upload_sd_content(const String& jsonContent) {
     return saved;
 }
 
+// --------------------------------------------------------------------------------------
 uint8_t get_content_folder_count() {
     return contentLoaded ? sdContent.size() : 0;
 }
 
+// --------------------------------------------------------------------------------------
 bool get_content_folder(uint8_t index, uint8_t &folderId, uint16_t &trackCount, String &folderName) {
     if (!contentLoaded || index >= sdContent.size()) return false;
 
@@ -415,6 +428,7 @@ bool get_content_folder(uint8_t index, uint8_t &folderId, uint16_t &trackCount, 
     return true;
 }
 
+// --------------------------------------------------------------------------------------
 bool get_content_track(uint8_t folderId, uint8_t trackIndex, String &trackName) {
     if (!contentLoaded) return false;
 
@@ -427,19 +441,40 @@ bool get_content_track(uint8_t folderId, uint8_t trackIndex, String &trackName) 
     return false;
 }
 
+// --------------------------------------------------------------------------------------
+bool get_folder_tracks(uint8_t folderId, JsonArray &tracksArray) {
+    if (!contentLoaded) return false;
+
+    for (const auto& folder : sdContent) {
+        if (folder.id == folderId) {
+            for (const auto& track : folder.tracks) {
+                JsonObject trackObj = tracksArray.createNestedObject();
+                trackObj["id"] = track.id;
+                trackObj["name"] = track.name;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// --------------------------------------------------------------------------------------
 bool has_content_data() {
     return contentLoaded;
 }
 
+// --------------------------------------------------------------------------------------
 void set_playback_mode(PlaybackMode mode) {
     currentPlaybackMode = mode;
     Serial.printf("[MusicPlayer] Playback mode set to: %d\n", (int)mode);
 }
 
+// --------------------------------------------------------------------------------------
 PlaybackMode get_playback_mode() {
     return currentPlaybackMode;
 }
 
+// --------------------------------------------------------------------------------------
 void set_eq_mode(EQMode mode) {
     currentEQMode = mode;
     // Send EQ command to DFPlayer
@@ -447,6 +482,7 @@ void set_eq_mode(EQMode mode) {
     Serial.printf("[MusicPlayer] EQ mode set to: %d\n", (int)mode);
 }
 
+// --------------------------------------------------------------------------------------
 EQMode get_eq_mode() {
     return currentEQMode;
 }

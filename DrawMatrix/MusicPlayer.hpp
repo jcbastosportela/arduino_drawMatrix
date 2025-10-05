@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <Arduino.h>  // For String class
 
+#include <ArduinoJson.h>
+
 namespace MusicPlayer {
 
 enum class MusicTrack {
@@ -89,6 +91,8 @@ uint8_t get_content_folder_count();
 bool get_content_folder(uint8_t index, uint8_t &folderId, uint16_t &trackCount, String &folderName);
 // Get track info for a folder (returns track filename)
 bool get_content_track(uint8_t folderId, uint8_t trackIndex, String &trackName);
+// Get all tracks from a folder with their IDs
+bool get_folder_tracks(uint8_t folderId, ArduinoJson::JsonArray &tracksArray);
 // Check if content is loaded
 bool has_content_data();
 } // namespace MusicPlayer

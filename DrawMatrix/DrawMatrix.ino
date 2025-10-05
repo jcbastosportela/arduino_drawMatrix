@@ -390,18 +390,8 @@ void setup(void) {
         JsonArray tracks = doc.createNestedArray("tracks");
 
         if (MusicPlayer::has_content_data()) {
-            uint8_t trackCount = 0;
-            for (uint8_t i = 0; i < 20; ++i) { // Reasonable limit
-                String trackName;
-                if (MusicPlayer::get_content_track(folder, i, trackName)) {
-                    trackCount++;
-                    JsonObject track = tracks.createNestedObject();
-                    track["id"] = i + 1;
-                    track["name"] = trackName;
-                } else {
-                    break; // No more tracks
-                }
-            }
+            // Use the new function to get tracks with proper IDs
+            MusicPlayer::get_folder_tracks(folder, tracks);
         } else {
             // Fallback: just list track numbers
             uint16_t trackCount = MusicPlayer::tracks_in_folder(folder);
