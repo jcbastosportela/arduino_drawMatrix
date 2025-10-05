@@ -277,6 +277,34 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       position: relative
     }
 
+    .now-playing {
+      flex: 1;
+      min-width: 200px;
+      font-size: .7rem;
+      color: var(--text-dim);
+      padding: 4px 8px;
+      background: #1a1a1a;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-sm);
+      overflow: hidden
+    }
+
+    .now-playing-title {
+      font-size: .55rem;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: .05em
+    }
+
+    .now-playing-track {
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500
+    }
+
     .explorer {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -479,6 +507,10 @@ const char MUSIC_HTML[] PROGMEM = R"html(
             <option value='4'>Classic</option>
             <option value='5'>Bass</option>
           </select>
+          <div class='now-playing' id='nowPlaying'>
+            <div class='now-playing-title'>Now Playing</div>
+            <div class='now-playing-track' id='nowPlayingTrack'>No track selected</div>
+          </div>
           <div class='status-row'>
             <div class='sd-status' id='sdStatus'>💾🔴</div>
             <div class='info-btn'>
@@ -520,9 +552,27 @@ const char MUSIC_HTML[] PROGMEM = R"html(
     let lastMusicInfo = null;
     let lastPlayedTrack = null;
     let activeFolder = null;
+    let folderTrackCache = {}; // Cache track data by folder
     const foldersEl = document.getElementById('folders');
     const tracksEl = document.getElementById('tracks');
     const trackMetaEl = document.getElementById('trackMeta');
+
+    function getCurrentTrackName(data) {
+      if (!data.current_folder || !data.current_track) return 'No track selected';
+
+      // Check if we have cached track data for current folder
+      const folderData = folderTrackCache[data.current_folder];
+      if (folderData && folderData.tracks) {
+        const track = folderData.tracks.find(t => t.id === data.current_track);
+        if (track && track.name) {
+          const folderName = data.folders ? data.folders.find(f => f.folder === data.current_folder)?.name || `Folder ${data.current_folder}` : `Folder ${data.current_folder}`;
+          return `${track.name} (${folderName})`;
+        }
+      }
+
+      // Fallback to generic display
+      return `Track ${data.current_track} (Folder ${data.current_folder})`;
+    }
 
     function setConfigOpen(open){
       const panel=document.getElementById('configPanel');
@@ -569,6 +619,9 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       if(!window._playbackModeBusy) document.getElementById('playbackMode').value = data.playback_mode || 0;
       if(!window._eqModeBusy) document.getElementById('eqMode').value = data.eq_mode || 0;
 
+      // Update now playing display
+      document.getElementById('nowPlayingTrack').textContent = getCurrentTrackName(data);
+
       // Render folders with "All" option
       foldersEl.innerHTML = '';
 
@@ -599,6 +652,10 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       const res = await fetch('/music_list?folder=' + folder);
       if(!res.ok) return;
       const data = await res.json();
+
+      // Cache the track data for now playing display
+      folderTrackCache[folder] = data;
+
       tracksEl.innerHTML='';
       trackMetaEl.textContent = data.tracks? `(${data.tracks.length})` : '(0)';
       if(!data.tracks || !data.tracks.length){
