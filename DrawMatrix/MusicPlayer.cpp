@@ -29,6 +29,7 @@ namespace MusicPlayer {
 SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX
 State currentState = State::STOPPED;
 static uint8_t lastPlayedFolder = 0; // 0 means none yet
+static uint16_t lastPlayedTrack = 0; // 0 means none yet
 static PlaybackMode currentPlaybackMode = PlaybackMode::NORMAL;
 static EQMode currentEQMode = EQMode::NORMAL;
 
@@ -154,14 +155,11 @@ void play(MusicTrack track) {
 // --------------------------------------------------------------------------------------
 // play by folder and track number (numeric MP3 filename index)
 void play_folder_track(uint8_t folder, uint16_t track) {
-    // The library supports playFolderTrack (8-bit track) and playFolderTrack16
-    if (track <= 0xFF) {
-        myDFPlayer.playFolderTrack(folder, static_cast<uint8_t>(track));
-    } else {
-        myDFPlayer.playFolderTrack16(folder, track);
-    }
+    Serial.printf("[MusicPlayer] Playing folder %d track %d\n", folder, track);
+    myDFPlayer.playFolderTrack(folder, track);
     currentState = State::PLAYING;
     lastPlayedFolder = folder;
+    lastPlayedTrack = track;
 }
 
 // --------------------------------------------------------------------------------------
@@ -277,7 +275,15 @@ bool sd_online() {
 
 // --------------------------------------------------------------------------------------
 uint16_t current_track() {
-    return myDFPlayer.getCurrentTrack(DfMp3_PlaySource_Sd);
+    // Try to get current track from DFPlayer hardware
+    uint16_t hwTrack = myDFPlayer.getCurrentTrack(DfMp3_PlaySource_Sd);
+    // If hardware returns valid track and we're playing, use it and update our cache
+    if (hwTrack > 0 && currentState == State::PLAYING) {
+        lastPlayedTrack = hwTrack;
+        return hwTrack;
+    }
+    // Otherwise return our cached value
+    return lastPlayedTrack;
 }
 
 uint8_t current_folder() {
