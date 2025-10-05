@@ -188,12 +188,44 @@ void pause() {
 // --------------------------------------------------------------------------------------
 void next() {
     myDFPlayer.nextTrack();
+    // Optimistically advance cached track within current folder if we know folder & content
+    if (lastPlayedFolder != 0 && contentLoaded) {
+        for (auto &f : sdContent) {
+            if (f.id == lastPlayedFolder) {
+                if (!f.tracks.empty()) {
+                    // Find current index by id
+                    size_t idx = 0;
+                    for (; idx < f.tracks.size(); ++idx) if (f.tracks[idx].id == lastPlayedTrack) break;
+                    if (idx < f.tracks.size()) {
+                        idx = (idx + 1) % f.tracks.size();
+                        lastPlayedTrack = f.tracks[idx].id;
+                    }
+                }
+                break;
+            }
+        }
+    }
     currentState = State::PLAYING;
 }
 
 // --------------------------------------------------------------------------------------
 void prev() {
     myDFPlayer.prevTrack();
+    if (lastPlayedFolder != 0 && contentLoaded) {
+        for (auto &f : sdContent) {
+            if (f.id == lastPlayedFolder) {
+                if (!f.tracks.empty()) {
+                    size_t idx = 0;
+                    for (; idx < f.tracks.size(); ++idx) if (f.tracks[idx].id == lastPlayedTrack) break;
+                    if (idx < f.tracks.size()) {
+                        if (idx == 0) idx = f.tracks.size() - 1; else idx -= 1;
+                        lastPlayedTrack = f.tracks[idx].id;
+                    }
+                }
+                break;
+            }
+        }
+    }
     currentState = State::PLAYING;
 }
 
@@ -278,15 +310,33 @@ bool sd_online() {
 
 // --------------------------------------------------------------------------------------
 uint16_t current_track() {
-    // Try to get current track from DFPlayer hardware
+    // Query DFPlayer for global/current track number (some clones return global index across folders)
     uint16_t hwTrack = myDFPlayer.getCurrentTrack(DfMp3_PlaySource_Sd);
-    // If hardware returns valid track and we're playing, use it and update our cache
     if (hwTrack > 0 && currentState == State::PLAYING) {
-        lastPlayedTrack = hwTrack;
-        return hwTrack;
+        // If we have content metadata and a current folder, attempt to validate/match.
+        if (contentLoaded && lastPlayedFolder != 0) {
+            // First, see if hwTrack matches an id in the folder; if yes, accept.
+            for (auto &f : sdContent) {
+                if (f.id == lastPlayedFolder) {
+                    bool found = false;
+                    for (auto &t : f.tracks) {
+                        if (t.id == hwTrack) { found = true; break; }
+                    }
+                    if (found) {
+                        lastPlayedTrack = hwTrack;
+                        return lastPlayedTrack;
+                    }
+                    // If not found, keep cached (likely global index mismatch) and log once.
+                    // (Optional: Could attempt mapping if we stored a global offset.)
+                    break;
+                }
+            }
+        } else {
+            lastPlayedTrack = hwTrack; // No metadata; just trust hardware.
+            return lastPlayedTrack;
+        }
     }
-    // Otherwise return our cached value
-    return lastPlayedTrack;
+    return lastPlayedTrack; // Fallback to cached value
 }
 
 // --------------------------------------------------------------------------------------
@@ -316,7 +366,7 @@ bool load_sd_content() {
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
-    Serial.print(doc.as<String>());
+    // Serial.print(doc.as<String>());
 
     if (error) {
         Serial.printf("[MusicPlayer] JSON parse error: %s\n", error.c_str());
@@ -347,7 +397,7 @@ bool load_sd_content() {
 
 // --------------------------------------------------------------------------------------
 bool save_sd_content() {
-    StaticJsonDocument<2048> doc;
+    JsonDocument doc;
     JsonArray folders = doc.createNestedArray("folders");
 
     for (const auto& folder : sdContent) {
@@ -378,7 +428,7 @@ bool save_sd_content() {
 
 // --------------------------------------------------------------------------------------
 bool upload_sd_content(const String& jsonContent) {
-    StaticJsonDocument<2048> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, jsonContent);
 
     if (error) {
@@ -467,6 +517,10 @@ bool has_content_data() {
 void set_playback_mode(PlaybackMode mode) {
     currentPlaybackMode = mode;
     Serial.printf("[MusicPlayer] Playback mode set to: %d\n", (int)mode);
+    // myDFPlayer.setPlaybackMode(static_cast<DfMp3_PlaybackMode>(mode));
+    if(mode != PlaybackMode::NORMAL) {
+        myDFPlayer.setRepeatPlayAllInRoot(true);
+    }
 }
 
 // --------------------------------------------------------------------------------------
