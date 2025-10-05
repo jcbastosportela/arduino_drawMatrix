@@ -28,6 +28,7 @@ namespace MusicPlayer {
 // Use ESPSoftwareSerial (not the default SoftwareSerial!)
 SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX
 State currentState = State::STOPPED;
+static uint8_t lastPlayedFolder = 0; // 0 means none yet
 
 // SD Content data structure
 struct TrackInfo { String name; };
@@ -158,6 +159,7 @@ void play_folder_track(uint8_t folder, uint16_t track) {
         myDFPlayer.playFolderTrack16(folder, track);
     }
     currentState = State::PLAYING;
+    lastPlayedFolder = folder;
 }
 
 // --------------------------------------------------------------------------------------
@@ -274,6 +276,10 @@ bool sd_online() {
 // --------------------------------------------------------------------------------------
 uint16_t current_track() {
     return myDFPlayer.getCurrentTrack(DfMp3_PlaySource_Sd);
+}
+
+uint8_t current_folder() {
+    return lastPlayedFolder;
 }
 
 // --------------------------------------------------------------------------------------

@@ -52,6 +52,8 @@ uint16_t tracks_in_folder(uint8_t folder);
 bool sd_online();
 uint16_t current_track();
 uint8_t get_volume();
+// Currently selected (last played) folder (0 if none)
+uint8_t current_folder();
 
 // ----- SD Content Management (LittleFS-based) ------
 // Load SD content description from LittleFS JSON file
