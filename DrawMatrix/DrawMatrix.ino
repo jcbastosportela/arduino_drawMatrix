@@ -99,7 +99,6 @@ std::map<uint8_t, OneButton> buttons = {
 // ======================================================================================
 void setup(void) {
     Serial.begin(115200);
-    MusicPlayer::init();
 
     // Configure buttons
     buttons[BUTTON_PLAY_PAUSE].attachClick([]() {
@@ -153,6 +152,7 @@ void setup(void) {
     if (MDNS.begin("esp8266")) {
         Serial.println("MDNS responder started");
     }
+    MusicPlayer::init();
 
     server.on("/", [](AsyncWebServerRequest *request){
         updateClientActivity();
@@ -169,6 +169,43 @@ void setup(void) {
     server.on("/music", [](AsyncWebServerRequest *request){
         updateClientActivity();
         app->handle_music(request);
+    });
+
+    // Returns JSON with music subsystem info (folders, tracks, current track, volume, online)
+    server.on("/music_info", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        StaticJsonDocument<768> doc;
+
+        MusicPlayer::run();
+
+        doc["sd_online"] = MusicPlayer::sd_online();
+        doc["total_folders"] = MusicPlayer::total_folders();
+        doc["total_tracks"] = MusicPlayer::total_tracks();
+        doc["current_track"] = MusicPlayer::current_track();
+        doc["volume"] = MusicPlayer::get_volume();
+        doc["has_content_data"] = MusicPlayer::has_content_data();
+
+        JsonArray arr = doc.createNestedArray("folders");
+
+        // Use content data if available, otherwise show empty
+        if (MusicPlayer::has_content_data()) {
+            uint8_t folderCount = MusicPlayer::get_content_folder_count();
+            for (uint8_t i = 0; i < folderCount; ++i) {
+                uint8_t folderId;
+                uint16_t trackCount;
+                String folderName;
+                if (MusicPlayer::get_content_folder(i, folderId, trackCount, folderName)) {
+                    JsonObject fo = arr.createNestedObject();
+                    fo["folder"] = folderId;
+                    fo["tracks"] = trackCount;
+                    fo["name"] = folderName;
+                }
+            }
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
     });
 
     server.on("/status_led_control", [](AsyncWebServerRequest *request){
@@ -260,6 +297,114 @@ void setup(void) {
             request->send(200, "text/plain", "Toggling play/pause");
             return;
         }
+    });
+    // Play a specific folder + track: /music_play_folder?folder=1&track=2
+    server.on("/music_play_folder", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        if (!request->hasParam("folder") || !request->hasParam("track")) {
+            request->send(400, "text/plain", "Missing folder or track parameter");
+            return;
+        }
+        int folder = request->getParam("folder")->value().toInt();
+        int track = request->getParam("track")->value().toInt();
+        Serial.printf("Play folder %d track %d\n", folder, track);
+        MusicPlayer::play_folder_track(static_cast<uint8_t>(folder), static_cast<uint16_t>(track));
+        request->send(200, "text/plain", "Playing folder " + String(folder) + " track " + String(track));
+    });
+
+    // List tracks in a folder: /music_list?folder=1
+    // Control endpoints: next, prev, set_volume
+    server.on("/music_next", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        MusicPlayer::next();
+        request->send(200, "text/plain", "next");
+    });
+    server.on("/music_prev", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        MusicPlayer::prev();
+        request->send(200, "text/plain", "prev");
+    });
+    // Set volume: /music_set_volume?v=20
+    server.on("/music_set_volume", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        if (!request->hasParam("volume")) {
+            request->send(400, "text/plain", "Missing volume parameter");
+            return;
+        }
+        uint8_t vol = request->getParam("volume")->value().toInt();
+        if (vol > MusicPlayer::MAX_VOLUME) {
+            request->send(400, "text/plain", "Volume exceeds maximum");
+            return;
+        }
+        MusicPlayer::set_volume(vol);
+        request->send(200, "text/plain", "Volume set to " + String(vol));
+    });
+
+    // Upload SD card content description (JSON)
+    server.on("/music_upload_content", HTTP_POST, [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        request->send(200, "text/plain", "Upload complete");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        static String jsonContent = "";
+
+        if (index == 0) {
+            jsonContent = "";
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            jsonContent += (char)data[i];
+        }
+
+        if (index + len == total) {
+            bool success = MusicPlayer::upload_sd_content(jsonContent);
+            if (!success) {
+                request->send(400, "text/plain", "Failed to parse or save JSON content");
+            }
+        }
+    });
+
+    // Get list of tracks in a specific folder
+    server.on("/music_list", [](AsyncWebServerRequest *request){
+        updateClientActivity();
+        if (!request->hasParam("folder")) {
+            request->send(400, "text/plain", "Missing folder parameter");
+            return;
+        }
+
+        uint8_t folder = request->getParam("folder")->value().toInt();
+        StaticJsonDocument<1024> doc;
+
+        doc["folder"] = folder;
+        doc["has_content_data"] = MusicPlayer::has_content_data();
+
+        JsonArray tracks = doc.createNestedArray("tracks");
+
+        if (MusicPlayer::has_content_data()) {
+            uint8_t trackCount = 0;
+            for (uint8_t i = 0; i < 20; ++i) { // Reasonable limit
+                String trackName;
+                if (MusicPlayer::get_content_track(folder, i, trackName)) {
+                    trackCount++;
+                    JsonObject track = tracks.createNestedObject();
+                    track["id"] = i + 1;
+                    track["name"] = trackName;
+                } else {
+                    break; // No more tracks
+                }
+            }
+        } else {
+            // Fallback: just list track numbers
+            uint16_t trackCount = MusicPlayer::tracks_in_folder(folder);
+            for (uint16_t i = 1; i <= trackCount; ++i) {
+                JsonObject track = tracks.createNestedObject();
+                track["id"] = i;
+                track["name"] = "Track " + String(i);
+            }
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
     });
     server.on("/music_stop", [](AsyncWebServerRequest *request) {
         updateClientActivity();
@@ -390,6 +535,7 @@ void setup(void) {
 void loop(void) {
     MDNS.update();
     app->run();
+    MusicPlayer::run();
     for(auto& [_, button] : buttons) {
         button.tick();
     }

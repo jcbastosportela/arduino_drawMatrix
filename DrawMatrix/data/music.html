@@ -1,9 +1,11 @@
 const char MUSIC_HTML[] PROGMEM = R"html(
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1a1a">
   <title>Music Player</title>
   <style>
@@ -18,11 +20,12 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       min-height: 100vh;
       margin: 0;
     }
+
     .container {
       background: #222;
       border-radius: 12px;
       padding: 32px 24px;
-      box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -31,27 +34,300 @@ const char MUSIC_HTML[] PROGMEM = R"html(
       width: 100%;
       text-align: center;
     }
+
     h1 {
       font-size: 2em;
       margin-bottom: 16px;
     }
+
     p {
       font-size: 1.2em;
       color: #aaa;
     }
+
     .icon {
       font-size: 4em;
       margin-bottom: 16px;
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="icon">🎵</div>
     <h1>Music Player</h1>
-    <p>Coming soon! This feature is currently under construction.</p>
-    <button id="homeButton" onclick="location.href='/'">🏠 Home</button>
+    <div style="width:100%;display:flex;flex-direction:column;gap:12px;align-items:stretch;">
+      <div id="musicInfo">Loading music info...</div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button id="playBtn">Play/Pause</button>
+        <button id="prevBtn">Prev</button>
+        <button id="nextBtn">Next</button>
+        <label style="display:flex;align-items:center;gap:6px;">Vol: <input id="volSlider" type="range" min="0" max="30"
+            value="15"></label>
+      </div>
+      <div style="border-top:1px solid #444;padding-top:16px;margin-top:8px;">
+        <h4>SD Card Content Upload</h4>
+        <textarea id="jsonContent" placeholder="Paste JSON description of your SD card contents here..." style="width:100%;height:100px;background:#333;color:#fff;border:1px solid #666;border-radius:4px;padding:8px;resize:vertical;"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button id="uploadBtn">Upload Content</button>
+          <button id="generateBtn">Scan Local Folder</button>
+        </div>
+        <input type="file" id="folderPicker" webkitdirectory style="display:none;">
+        <div id="uploadStatus" style="margin-top:8px;color:#888;"></div>
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;color:#aaa;">JSON Format Example</summary>
+          <pre style="background:#333;padding:8px;border-radius:4px;font-size:0.8em;overflow-x:auto;white-space:pre-wrap;">
+{
+  "folders": [
+    {
+      "id": 1,
+      "name": "Music",
+      "tracks": [
+        {"id": 1, "name": "Song 1.mp3"},
+        {"id": 2, "name": "Song 2.mp3"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Sounds",
+      "tracks": [
+        {"id": 1, "name": "Beep.mp3"},
+        {"id": 2, "name": "Alert.mp3"}
+      ]
+    }
+  ]
+}</pre>
+        </details>
+      </div>
+      <div style="display:flex;gap:12px;flex-direction:row;align-items:flex-start;border-top:1px solid #444;padding-top:16px;margin-top:8px;">
+        <div style="flex:1">
+          <h4>Folders</h4>
+          <ul id="folders"></ul>
+        </div>
+        <div style="flex:2">
+          <h4>Tracks</h4>
+          <ul id="tracks"></ul>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button id="refreshButton">Refresh</button>
+        <button id="homeButton" onclick="location.href='/'">🏠 Home</button>
+      </div>
+    </div>
+    <script>
+      let lastMusicInfo = null;
+      async function fetchMusicInfo() {
+        try {
+          const res = await fetch('/music_info');
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          lastMusicInfo = data;
+          renderMusicInfo(data);
+        } catch (e) {
+          document.getElementById('musicInfo').innerHTML = '<p>Error loading music info: ' + e.message + '</p>';
+        }
+      }
+
+      function renderMusicInfo(data) {
+        const container = document.getElementById('musicInfo');
+        const contentStatus = data.has_content_data ? 'Content loaded' : 'Using DFPlayer queries';
+        container.innerHTML = `SD Online: ${data.sd_online} &nbsp; | &nbsp; Total folders: ${data.total_folders} &nbsp; | &nbsp; Total tracks: ${data.total_tracks} &nbsp; | &nbsp; Current track: ${data.current_track} &nbsp; | &nbsp; Volume: ${data.volume} &nbsp; | &nbsp; ${contentStatus}`;
+        // folders
+        const foldersEl = document.getElementById('folders');
+        foldersEl.innerHTML = '';
+        if (data.folders && data.folders.length) {
+          data.folders.forEach(function (f) {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            const name = f.name ? `${f.name} (${f.tracks})` : `Folder ${f.folder} (${f.tracks})`;
+            btn.textContent = name;
+            btn.onclick = () => loadFolder(f.folder);
+            li.appendChild(btn);
+            foldersEl.appendChild(li);
+          });
+        } else {
+          foldersEl.innerHTML = '<p>No folders found</p>';
+        }
+        // set vol slider (but don't override while user is dragging)
+        if (!window._volSliderBusy) {
+          document.getElementById('volSlider').value = data.volume;
+        }
+      }
+
+      async function loadFolder(folder) {
+        const res = await fetch('/music_list?folder=' + folder);
+        if (!res.ok) return;
+        const data = await res.json();
+        const tracksEl = document.getElementById('tracks');
+        tracksEl.innerHTML = '';
+        if (!data.tracks || !data.tracks.length) {
+          tracksEl.innerHTML = '<p>No tracks in this folder</p>';
+          return;
+        }
+        data.tracks.forEach(function(track) {
+          const li = document.createElement('li');
+          const btn = document.createElement('button');
+          btn.textContent = track.name || `Track ${track.id}`;
+          btn.onclick = () => {
+            fetch(`/music_play_folder?folder=${folder}&track=${track.id}`).then(() => fetchMusicInfo());
+          };
+          li.appendChild(btn);
+          tracksEl.appendChild(li);
+        });
+      }
+
+      document.getElementById('refreshButton').addEventListener('click', fetchMusicInfo);
+      document.getElementById('playBtn').addEventListener('click', () => fetch('/music_play').then(() => fetchMusicInfo()));
+      document.getElementById('prevBtn').addEventListener('click', () => fetch('/music_prev').then(() => fetchMusicInfo()));
+      document.getElementById('nextBtn').addEventListener('click', () => fetch('/music_next').then(() => fetchMusicInfo()));
+
+      // Volume slider: avoid sending while dragging to prevent jumps.
+      const volSlider = document.getElementById('volSlider');
+      volSlider.addEventListener('pointerdown', () => { window._volSliderBusy = true; });
+      volSlider.addEventListener('pointerup', (e) => { window._volSliderBusy = false; const v = e.target.value; fetch(`/music_set_volume?volume=${v}`).then(() => fetchMusicInfo()); });
+      // support touchend/mouseup fallback
+      volSlider.addEventListener('change', (e) => { if (!window._volSliderBusy) { const v = e.target.value; fetch(`/music_set_volume?volume=${v}`).then(() => fetchMusicInfo()); } });
+
+      // Upload content functionality
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        const content = document.getElementById('jsonContent').value.trim();
+        const statusEl = document.getElementById('uploadStatus');
+
+        if (!content) {
+          statusEl.textContent = 'Please paste JSON content first';
+          statusEl.style.color = '#f88';
+          return;
+        }
+
+        try {
+          // Validate JSON first
+          JSON.parse(content);
+
+          statusEl.textContent = 'Uploading...';
+          statusEl.style.color = '#88f';
+
+          const res = await fetch('/music_upload_content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: content
+          });
+
+          if (res.ok) {
+            statusEl.textContent = 'Upload successful! Refreshing...';
+            statusEl.style.color = '#8f8';
+            setTimeout(() => {
+              fetchMusicInfo();
+              document.getElementById('jsonContent').value = '';
+              statusEl.textContent = '';
+            }, 1000);
+          } else {
+            const error = await res.text();
+            statusEl.textContent = 'Upload failed: ' + error;
+            statusEl.style.color = '#f88';
+          }
+        } catch (e) {
+          statusEl.textContent = 'Invalid JSON: ' + e.message;
+          statusEl.style.color = '#f88';
+        }
+      });
+
+      // Generate content from local folder functionality
+      document.getElementById('generateBtn').addEventListener('click', () => {
+        document.getElementById('folderPicker').click();
+      });
+
+      document.getElementById('folderPicker').addEventListener('change', async (event) => {
+        const files = event.target.files;
+        const statusEl = document.getElementById('uploadStatus');
+
+        if (files.length === 0) {
+          statusEl.textContent = 'No folder selected';
+          statusEl.style.color = '#f88';
+          return;
+        }
+
+        try {
+          statusEl.textContent = 'Scanning local folder...';
+          statusEl.style.color = '#88f';
+
+          // Group files by folder (numeric folder names)
+          const folders = {};
+
+          for (const file of files) {
+            const path = file.webkitRelativePath;
+            const pathParts = path.split('/');
+
+            if (pathParts.length >= 2) {
+              const folderName = pathParts[pathParts.length - 2]; // Parent folder
+              const fileName = pathParts[pathParts.length - 1];   // File name
+
+              // Only process audio files
+              if (fileName.toLowerCase().match(/\.(mp3|wav|flac|m4a|aac)$/)) {
+                // Try to extract numeric folder ID
+                const folderMatch = folderName.match(/^(\d+)$/);
+                if (folderMatch) {
+                  const folderId = parseInt(folderMatch[1]);
+
+                  if (!folders[folderId]) {
+                    folders[folderId] = {
+                      id: folderId,
+                      name: folderName,
+                      tracks: []
+                    };
+                  }
+
+                  // Extract track ID from filename if possible (e.g., "001.mp3" -> 1)
+                  const trackMatch = fileName.match(/^(\d+)/);
+                  const trackId = trackMatch ? parseInt(trackMatch[1]) : folders[folderId].tracks.length + 1;
+
+                  folders[folderId].tracks.push({
+                    id: trackId,
+                    name: fileName
+                  });
+                }
+              }
+            }
+          }
+
+          // Sort folders by ID and tracks by ID
+          const sortedFolders = Object.values(folders)
+            .sort((a, b) => a.id - b.id)
+            .map(folder => ({
+              ...folder,
+              tracks: folder.tracks.sort((a, b) => a.id - b.id)
+            }));
+
+          if (sortedFolders.length === 0) {
+            statusEl.textContent = 'No valid music folders found. Folders should be numbered (1, 2, 3, etc.)';
+            statusEl.style.color = '#f88';
+            return;
+          }
+
+          // Generate JSON
+          const jsonData = {
+            folders: sortedFolders
+          };
+
+          document.getElementById('jsonContent').value = JSON.stringify(jsonData, null, 2);
+          statusEl.textContent = `Found ${sortedFolders.length} folders with ${sortedFolders.reduce((sum, f) => sum + f.tracks.length, 0)} tracks. You can edit before uploading.`;
+          statusEl.style.color = '#8f8';
+
+          setTimeout(() => {
+            statusEl.textContent = '';
+          }, 5000);
+
+        } catch (e) {
+          statusEl.textContent = 'Scanning error: ' + e.message;
+          statusEl.style.color = '#f88';
+        }
+      });
+
+
+      // initial
+      fetchMusicInfo();
+    </script>
   </div>
 </body>
+
 </html>
 )html";
