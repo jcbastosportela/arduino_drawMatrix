@@ -52,6 +52,7 @@
 
 #include <AsyncTasker.hpp>
 
+#include "Logger.hpp"
 #include "MusicPlayer.hpp"
 #include "ServerSys.hpp"
 
@@ -98,13 +99,19 @@ std::map<uint8_t, OneButton> buttons = {
 void setup(void) {
     Serial.begin(115200);
 
+    // Initialize Logger
+    Logger::Log::instance().begin(Logger::LOG_LEVEL_DEBUG);
+    LOG_INFO("MAIN", "DrawMatrix starting up...");
+
     // Configure buttons
     buttons[BUTTON_PLAY_PAUSE].attachClick([]() {
         if (MusicPlayer::get_state() == MusicPlayer::State::STOPPED) {
+            LOG_DEBUG("BUTTON", "No track loaded, playing default track (MUSIC_NATURE)");
             Serial.println("No track loaded, playing default track (MUSIC_NATURE)");
             MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_NATURE);
             return;
         }
+        LOG_DEBUG("BUTTON", "Play/Pause button clicked");
         Serial.println("Play/Pause button clicked");
         MusicPlayer::pause();
     });
@@ -142,12 +149,15 @@ void setup(void) {
         Serial.print("*");
     }
     Serial.println("");
+    LOG_INFO("WIFI", "Connected to %s", ssid);
+    LOG_INFO("WIFI", "IP address: %s", WiFi.localIP().toString().c_str());
     Serial.print("Connected to ");
     Serial.println(ssid);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
     if (MDNS.begin("esp8266")) {
+        LOG_INFO("MDNS", "MDNS responder started");
         Serial.println("MDNS responder started");
     }
     MusicPlayer::init();
@@ -506,10 +516,12 @@ void setup(void) {
     /////////////////////////////////////////////////////////
 #endif // 0
     server.begin();
+    LOG_INFO("SERVER", "HTTP server started");
     Serial.println("HTTP server started");
 
     // Initialize AsyncElegantOTA
     ElegantOTA.begin(&server);
+    LOG_INFO("OTA", "OTA Update available at: http://%s/update", WiFi.localIP().toString().c_str());
     Serial.println("OTA Update available at: http://" + WiFi.localIP().toString() + "/update");
 
     AsyncTasker::schedule(
@@ -523,12 +535,15 @@ void setup(void) {
 
             if (hasDisplayActivity) {
                 n_fails = 0;
+                LOG_DEBUG("DISPLAY", "Display activity detected - clock mode OFF");
                 Serial.println("Display activity detected - clock mode OFF");
                 app->clock_mode(false);
             } else {
+                LOG_DEBUG("DISPLAY", "No display activity");
                 Serial.println("No display activity");
                 n_fails++;
                 if (n_fails > MAX_NUM_TRIES_NO_CLIENT) {
+                    LOG_INFO("DISPLAY", "No display activity - enabling clock mode");
                     Serial.println("No display activity - enabling clock mode");
                     n_fails = 0;
                     app->clock_mode(true);
@@ -542,20 +557,39 @@ void setup(void) {
         WIFI_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
             static size_t fail_sync_count = 0;
+            static bool reconnecting = false;
+            static unsigned long reconnect_start = 0;
+            constexpr unsigned long RECONNECT_TIMEOUT = 30000; // 30 seconds timeout
+
+            // If currently reconnecting, check status
+            if (reconnecting) {
+                if (WiFi.status() == WL_CONNECTED) {
+                    Serial.println("\nWiFi reconnected successfully!");
+                    reconnecting = false;
+                    fail_sync_count = 0;
+                    return;
+                } else if (millis() - reconnect_start > RECONNECT_TIMEOUT) {
+                    Serial.println("\nWiFi reconnection timeout. Retrying...");
+                    WiFi.disconnect();
+                    WiFi.begin(ssid, password);
+                    reconnect_start = millis();
+                }
+                return; // Exit early while reconnecting
+            }
+
+            // Normal NTP sync check
             if (!ntpClient.update()) {
                 if ((WiFi.status() != WL_CONNECTED) ||
                     (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1))) {
+                    LOG_WARNING("NTP", "NTP sync failed. WiFi status: %d. Re-connecting...", WiFi.status());
                     Serial.println("NTP sync failed. No WiFi? Wifi status: " + String(WiFi.status()) +
                                    ". Re-connecting...");
                     fail_sync_count = 0;
+                    reconnecting = true;
+                    reconnect_start = millis();
                     WiFi.disconnect();
-                    WiFi.begin(ssid, password); // Wait for connection
-                    while (WiFi.status() != WL_CONNECTED) {
-                        delay(500);
-                        Serial.print(".");
-                    }
+                    WiFi.begin(ssid, password);
                 }
-
             } else {
                 fail_sync_count = 0;
             }
