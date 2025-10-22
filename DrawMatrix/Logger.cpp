@@ -362,16 +362,16 @@ String Log::tailLog(bool current, size_t maxLines) {
     }
     File f = LittleFS.open(filename, "r");
     if (!f) return String();
-    
+
     // For small maxLines, just read entire file and split
     // More efficient than complex backward scanning on ESP8266
     String content = f.readString();
     f.close();
-    
+
     if (content.length() == 0) {
         return String();
     }
-    
+
     // Count lines from end
     std::vector<int> lineStarts;
     lineStarts.push_back(0);
@@ -380,15 +380,15 @@ String Log::tailLog(bool current, size_t maxLines) {
             lineStarts.push_back(i + 1);
         }
     }
-    
+
     // Take last N lines
     size_t totalLines = lineStarts.size();
     size_t startIdx = (totalLines > maxLines) ? (totalLines - maxLines) : 0;
-    
+
     if (startIdx >= lineStarts.size()) {
         return content;
     }
-    
+
     return content.substring(lineStarts[startIdx]);
 }
 

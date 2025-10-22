@@ -17,6 +17,7 @@ const char INDEX_HTML[] PROGMEM = R"html(
       justify-content: center;
       min-height: 100vh;
       margin: 0;
+      padding: 16px;
     }
     .container {
       background: #222;
@@ -33,7 +34,7 @@ const char INDEX_HTML[] PROGMEM = R"html(
       text-align: center;
       margin: 0 0 16px 0;
     }
-    .menu {
+    .main-menu {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       gap: 16px;
@@ -64,12 +65,75 @@ const char INDEX_HTML[] PROGMEM = R"html(
       font-size: 0.9em;
       color: #aaa;
     }
+    .settings-section {
+      margin-top: 8px;
+      border-top: 1px solid #333;
+      padding-top: 16px;
+    }
+    .settings-toggle {
+      background: transparent;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 12px;
+      color: #aaa;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      font-size: 0.95em;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .settings-toggle:hover {
+      background: #2a2a2a;
+      border-color: #555;
+    }
+    .settings-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .settings-content.open {
+      max-height: 500px;
+      margin-top: 12px;
+    }
+    .settings-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .settings-item {
+      background: #2a2a2a;
+      border-radius: 6px;
+      padding: 12px 16px;
+      text-decoration: none;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: background 0.2s;
+      font-size: 0.9em;
+    }
+    .settings-item:hover {
+      background: #333;
+    }
+    .settings-item .icon {
+      font-size: 1.2em;
+      margin: 0;
+    }
+    .arrow {
+      transition: transform 0.3s;
+    }
+    .arrow.open {
+      transform: rotate(180deg);
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>LED Matrix Control</h1>
-    <div class="menu">
+    <div class="main-menu">
       <a href="/draw" class="menu-item">
         <div class="icon">🎨</div>
         <div class="title">Draw</div>
@@ -83,15 +147,42 @@ const char INDEX_HTML[] PROGMEM = R"html(
       <a href="/music" class="menu-item">
         <div class="icon">🎵</div>
         <div class="title">Music</div>
-        <div class="description">Control music playback (Coming Soon)</div>
-      </a>
-      <a href="/update" class="menu-item">
-        <div class="icon">🚀</div>
-        <div class="title">OTA Update</div>
-        <div class="description">Upload new firmware wirelessly</div>
+        <div class="description">Control music playback</div>
       </a>
     </div>
+
+    <div class="settings-section">
+      <button class="settings-toggle" onclick="toggleSettings()">
+        <span>⚙️ Advanced Settings</span>
+        <span class="arrow">▼</span>
+      </button>
+      <div class="settings-content" id="settingsContent">
+        <div class="settings-menu">
+          <a href="/log-settings" class="settings-item">
+            <span class="icon">📋</span>
+            <span>Log Settings</span>
+          </a>
+          <a href="/logs" class="settings-item">
+            <span class="icon">📊</span>
+            <span>Log Viewer</span>
+          </a>
+          <a href="/update" class="settings-item">
+            <span class="icon">🚀</span>
+            <span>OTA Update</span>
+          </a>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <script>
+    function toggleSettings() {
+      const content = document.getElementById('settingsContent');
+      const arrow = document.querySelector('.arrow');
+      content.classList.toggle('open');
+      arrow.classList.toggle('open');
+    }
+  </script>
 </body>
 </html>
 )html";
