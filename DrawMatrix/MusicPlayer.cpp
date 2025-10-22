@@ -9,10 +9,12 @@
  *            MIT License                                                                                              *
  * ------------------------------------------------------------------------------------------------------------------- *
  */
+// Prefer vendored EspSoftwareSerial rather than core SoftwareSerial
 #include "MusicPlayer.hpp"
-
+#include "Logger.hpp"
 // clang-format off
-#include <SoftwareSerial.h>         // needs to be before DFMiniMp3.h
+// Use vendored EspSoftwareSerial library header; file is SoftwareSerial.h inside libraries/EspSoftwareSerial/src
+#include <SoftwareSerial.h>
 #include <DFMiniMp3.h>              // this library seems to be more robust than DFRobotDFPlayerMini
 // #include <DFRobotDFPlayerMini.h>
 // clang-format on
@@ -61,13 +63,14 @@ std::map<MusicTrack, std::function<void()>> trackActions = {
 
 // --------------------------------------------------------------------------------------
 void init() {
-    mySoftwareSerial.begin(9600); // DFPlayer
+    // Configure software serial for DFPlayer communication
+    mySoftwareSerial.begin(9600); // if using EspSoftwareSerial, constructor assigned pins
     if (!myDFPlayer.begin(mySoftwareSerial, true, false)) {
-        Serial.println("DFPlayer Mini not detected!");
+        LOG_ERROR("MUSIC", "DFPlayer Mini not detected!");
         while (true)
             ;
     }
-    Serial.println("DFPlayer Mini online.");
+    LOG_INFO("MUSIC", "DFPlayer Mini online.");
 }
 #else
 
@@ -85,25 +88,21 @@ class Mp3Notify {
   public:
     static void PrintlnSourceAction(DfMp3_PlaySources source, const char *action) {
         if (source & DfMp3_PlaySources_Sd) {
-            Serial.print("SD Card, ");
+            LOG_DEBUG("MUSIC", "SD Card");
         }
         if (source & DfMp3_PlaySources_Usb) {
-            Serial.print("USB Disk, ");
+            LOG_DEBUG("MUSIC", "USB Disk");
         }
         if (source & DfMp3_PlaySources_Flash) {
-            Serial.print("Flash, ");
+            LOG_DEBUG("MUSIC", "Flash");
         }
-        Serial.println(action);
     }
     static void OnError([[maybe_unused]] DfMp3 &mp3, uint16_t errorCode) {
         // see DfMp3_Error for code meaning
-        Serial.println();
-        Serial.print("Com Error ");
-        Serial.println(errorCode);
+        LOG_ERROR("MUSIC", "Com Error %u", errorCode);
     }
     static void OnPlayFinished([[maybe_unused]] DfMp3 &mp3, [[maybe_unused]] DfMp3_PlaySources source, uint16_t track) {
-        Serial.print("Play finished for #");
-        Serial.println(track);
+        LOG_DEBUG("MUSIC", "Play finished for #%u", track);
     }
     static void OnPlaySourceOnline([[maybe_unused]] DfMp3 &mp3, DfMp3_PlaySources source) {
         PrintlnSourceAction(source, "online");
@@ -134,16 +133,16 @@ void init() {
     myDFPlayer.reset(); // waits for online notification
     myDFPlayer.setComRetries(3);
 
-    Serial.println("[MusicPlayer] DFPlayer Mini online (post-reset)");
+    LOG_INFO("MUSIC", "[MusicPlayer] DFPlayer Mini online (post-reset)");
 
     // Initialize LittleFS
     if (!LittleFS.begin()) {
-        Serial.println("[MusicPlayer] LittleFS mount failed");
+        LOG_ERROR("FS", "[MusicPlayer] LittleFS mount failed");
     }
 
     // Try to load SD content from LittleFS first
     if (!load_sd_content()) {
-        Serial.println("[MusicPlayer] No content file found, will use DFPlayer queries");
+        LOG_INFO("MUSIC", "[MusicPlayer] No content file found, will use DFPlayer queries");
     }
 }
 #endif // DFRobotDFPlayerMini_cpp
@@ -155,13 +154,13 @@ void play(MusicTrack track) {
         it->second(); // Call the associated function
         currentState = State::PLAYING;
     } else {
-        Serial.println("Track not found!");
+        LOG_WARNING("MUSIC", "Track not found!");
     }
 }
 
 // --------------------------------------------------------------------------------------
 void play_folder_track(uint8_t folder, uint16_t track) {
-    Serial.printf("[MusicPlayer] Playing folder %d track %d\n", folder, track);
+    LOG_INFO("MUSIC", "[MusicPlayer] Playing folder %d track %d", folder, track);
     myDFPlayer.playFolderTrack(folder, track);
     currentState = State::PLAYING;
     lastPlayedFolder = folder;
@@ -236,7 +235,7 @@ State get_state() { return currentState; }
 void start_volume_change() {
     stop_volume_change_flag = false;
     AsyncTasker::schedule(100, [](uint64_t t, uint64_t &d, bool &repeat) {
-        Serial.printf("Volume change step %s\n", increase_volume_flag ? "<+" : "<-");
+        LOG_DEBUG("MUSIC", "Volume change step %s", increase_volume_flag ? "<+" : "<-");
         if (increase_volume_flag) {
             myDFPlayer.increaseVolume();
         } else {
@@ -352,13 +351,13 @@ uint8_t get_volume() {
 // --------------------------------------------------------------------------------------
 bool load_sd_content() {
     if (!LittleFS.exists(SD_CONTENT_FILE)) {
-        Serial.println("[MusicPlayer] No SD content file found");
+        LOG_INFO("MUSIC", "[MusicPlayer] No SD content file found");
         return false;
     }
 
     auto file = LittleFS.open(SD_CONTENT_FILE, "r");
     if (!file) {
-        Serial.println("[MusicPlayer] Failed to open SD content file");
+        LOG_ERROR("MUSIC", "[MusicPlayer] Failed to open SD content file");
         return false;
     }
 
@@ -369,7 +368,7 @@ bool load_sd_content() {
     // Serial.print(doc.as<String>());
 
     if (error) {
-        Serial.printf("[MusicPlayer] JSON parse error: %s\n", error.c_str());
+        LOG_ERROR("MUSIC", "[MusicPlayer] JSON parse error: %s", error.c_str());
         return false;
     }
 
@@ -391,7 +390,7 @@ bool load_sd_content() {
     }
 
     contentLoaded = true;
-    Serial.printf("[MusicPlayer] Loaded %u folders from SD content file\n", sdContent.size());
+    LOG_INFO("MUSIC", "[MusicPlayer] Loaded %u folders from SD content file", sdContent.size());
     return true;
 }
 
@@ -415,14 +414,14 @@ bool save_sd_content() {
 
     auto file = LittleFS.open(SD_CONTENT_FILE, "w");
     if (!file) {
-        Serial.println("[MusicPlayer] Failed to create SD content file");
+        LOG_ERROR("MUSIC", "[MusicPlayer] Failed to create SD content file");
         return false;
     }
 
     serializeJson(doc, file);
     file.close();
 
-    Serial.printf("[MusicPlayer] Saved %u folders to SD content file\n", sdContent.size());
+    LOG_INFO("MUSIC", "[MusicPlayer] Saved %u folders to SD content file", sdContent.size());
     return true;
 }
 
@@ -432,7 +431,7 @@ bool upload_sd_content(const String& jsonContent) {
     DeserializationError error = deserializeJson(doc, jsonContent);
 
     if (error) {
-        Serial.printf("[MusicPlayer] Upload JSON parse error: %s\n", error.c_str());
+        LOG_ERROR("MUSIC", "[MusicPlayer] Upload JSON parse error: %s", error.c_str());
         return false;
     }
 
@@ -457,7 +456,7 @@ bool upload_sd_content(const String& jsonContent) {
     bool saved = save_sd_content();
 
     if (saved) {
-        Serial.printf("[MusicPlayer] Uploaded and saved %u folders\n", sdContent.size());
+    LOG_INFO("MUSIC", "[MusicPlayer] Uploaded and saved %u folders", sdContent.size());
     }
     return saved;
 }
@@ -516,7 +515,7 @@ bool has_content_data() {
 // --------------------------------------------------------------------------------------
 void set_playback_mode(PlaybackMode mode) {
     currentPlaybackMode = mode;
-    Serial.printf("[MusicPlayer] Playback mode set to: %d\n", (int)mode);
+    LOG_INFO("MUSIC", "[MusicPlayer] Playback mode set to: %d", (int)mode);
     // myDFPlayer.setPlaybackMode(static_cast<DfMp3_PlaybackMode>(mode));
     if(mode != PlaybackMode::NORMAL) {
         myDFPlayer.setRepeatPlayAllInRoot(true);
@@ -533,7 +532,7 @@ void set_eq_mode(EQMode mode) {
     currentEQMode = mode;
     // Send EQ command to DFPlayer
     myDFPlayer.setEq(static_cast<DfMp3_Eq>(mode));
-    Serial.printf("[MusicPlayer] EQ mode set to: %d\n", (int)mode);
+    LOG_INFO("MUSIC", "[MusicPlayer] EQ mode set to: %d", (int)mode);
 }
 
 // --------------------------------------------------------------------------------------

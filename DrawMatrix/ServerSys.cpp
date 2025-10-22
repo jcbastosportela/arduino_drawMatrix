@@ -15,10 +15,13 @@
 #include "Arduino.h"
 #include <LittleFS.h>
 
+#include "Logger.hpp"
 #include "ALARM_HTML.hpp"
 #include "DRAW_HTML.hpp"
 #include "MUSIC_HTML.hpp"
 #include "INDEX_HTML.hpp"
+#include "LOG_SETTINGS_HTML.hpp"
+#include "LOGS_HTML.hpp"
 
 #include "AsyncTasker.hpp"
 
@@ -42,10 +45,10 @@ bool collectBodyData(uint8_t *data, size_t len, size_t index, size_t total, Stri
         body = "";
         body.reserve(total); // Pre-allocate memory to avoid reallocations
     }
-    
+
     // Append the chunk directly without byte-by-byte copying
     body.concat((char*)data, len);
-    
+
     // Return true only when we have received all data
     return (index + len == total);
 }
@@ -62,10 +65,10 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
     }
     else {
         Serial.println("LittleFS mounted successfully");
-        if(LittleFS.exists("/alarms.bin")) {
-            alarms_file = LittleFS.open("/alarms.bin", "r");
-            if (alarms_file) {
-                Serial.println("Reading alarms from /alarms.bin");
+        if (LittleFS.exists("/alarms.bin")) {
+            File alarmFile = LittleFS.open("/alarms.bin", "r");
+            if (alarmFile) {
+                LOG_INFO("ALARM", "Reading alarms from /alarms.bin");
                 while (alarms_file.available()) {
                     String line = alarms_file.readStringUntil('\n');
                     line.trim();
@@ -73,7 +76,7 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
                         // Try to parse new format (time,days)
                         int commaPos = line.indexOf(',');
                         AlarmConfig alarm;
-                        
+
                         if (commaPos != -1) {
                             // New format
                             alarm.time = line.substring(0, commaPos);
@@ -83,15 +86,15 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
                             alarm.time = line;
                             alarm.days = 0x7F; // All days enabled
                         }
-                        
+
                         m_alarms.push_back(alarm);
-                        Serial.printf("Loaded alarm: time=%s, days=0x%02X\n", 
+                        LOG_INFO("ALARM", "Loaded alarm: time=%s, days=0x%02X",
                             alarm.time.c_str(), alarm.days);
                     }
                 }
-                alarms_file.close();
+                alarmFile.close();
             } else {
-                Serial.println("Failed to open /alarms.bin for reading");
+                LOG_ERROR("ALARM", "Failed to open /alarms.bin for reading");
             }
         }
     }
@@ -161,13 +164,13 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
     AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
         String current_time = m_ntp.getFormattedTime().substring(0, 5);
         int current_day = m_ntp.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-        
-        Serial.printf("Checking alarms at NTP time: %s (day: %d)\n", current_time.c_str(), current_day);
-        
+
+        LOG_DEBUG("ALARM", "Checking alarms at NTP time: %s (day: %d)", current_time.c_str(), current_day);
+
         for (const auto &alarm : m_alarms) {
             if (alarm.time == current_time && alarm.isActiveOnDay(current_day)) {
-                Serial.printf("Alarm triggered for: %s (days: 0x%02X)\n", 
-                    alarm.time.c_str(), alarm.days);
+                LOG_INFO("ALARM", "Alarm triggered for: %s (days: 0x%02X)",
+                         alarm.time.c_str(), alarm.days);
                 d = 60000;  // Delay next check by 60 seconds to avoid multiple triggers within the same minute
                 if (m_alarm_callback) {
                     m_alarm_callback();
@@ -209,6 +212,153 @@ void App::handle_alarm(AsyncWebServerRequest *request) {
 }
 
 // --------------------------------------------------------------------------------------
+void App::handle_log_settings(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", LOG_SETTINGS_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_log_config(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    // GET: return current config JSON
+    if (request->method() == HTTP_GET) {
+        JsonDocument doc;
+        auto lvl = Logger::Log::instance().getLevel();
+        doc["level"] = Logger::Log::levelToString(lvl);
+#if LOG_ENABLE_FILE
+        doc["file_logging"] = Logger::Log::instance().isFileLoggingEnabled();
+        String currentLog = Logger::Log::instance().getLogContents(true);
+        doc["current_log_size"] = currentLog.length();
+#else
+        doc["file_logging"] = false;
+        doc["current_log_size"] = 0;
+#endif
+        String out; serializeJson(doc, out);
+        request->send(200, "application/json", out);
+        return;
+    }
+
+    // POST: body contains JSON {level:..., file_logging:0/1}
+    static String body;
+    if (request->method() == HTTP_POST) {
+        if (!collectBodyData(data, len, index, total, body)) {
+            return; // wait for full body
+        }
+        if (body.length() == 0) {
+            request->send(400, "text/plain", "Empty body");
+            LOG_ERROR("SERVER", "%s", "Empty body for log-config POST");
+            return;
+        }
+        JsonDocument doc;
+        if (auto err = deserializeJson(doc, body)) {
+            request->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+            LOG_ERROR("SERVER", "Invalid JSON for log-config: %s", err.c_str());
+            return;
+        }
+        if (!doc.containsKey("level")) {
+            request->send(400, "text/plain", "Missing 'level'");
+            LOG_ERROR("SERVER", "%s", "Missing 'level' in log-config POST");
+            return;
+        }
+        const char *lvlStr = doc["level"].as<const char*>();
+        auto newLvl = Logger::Log::stringToLevel(lvlStr);
+        Logger::Log::instance().setLevel(newLvl);
+        LOG_INFO("SERVER", "Runtime log level changed to %s", lvlStr);
+#if LOG_ENABLE_FILE
+        bool fileLog = doc.containsKey("file_logging") ? (doc["file_logging"].as<int>() != 0) : Logger::Log::instance().isFileLoggingEnabled();
+        if (Logger::Log::instance().enableFileLogging(fileLog)) {
+            LOG_INFO("SERVER", "File logging %s", fileLog ? "ENABLED" : "DISABLED");
+        } else if (fileLog) {
+            LOG_ERROR("SERVER", "%s", "Failed to enable file logging (LittleFS?)");
+        }
+        // Persist configuration changes
+        Logger::Log::instance().saveConfig();
+#endif
+        request->send(200, "text/plain", "Config updated");
+        return;
+    }
+    request->send(405, "text/plain", "Method Not Allowed");
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_log_clear(AsyncWebServerRequest *request) {
+#if LOG_ENABLE_FILE
+    Logger::Log::instance().clearLogs();
+    LOG_INFO("SERVER", "%s", "Logs cleared via web endpoint");
+    request->send(200, "text/plain", "Logs cleared");
+#else
+    request->send(400, "text/plain", "File logging disabled at compile time");
+#endif
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_log_download(AsyncWebServerRequest *request) {
+#if LOG_ENABLE_FILE
+    String which = request->hasParam("which") ? request->getParam("which")->value() : String("current");
+    bool current = which != "previous";
+    String content = Logger::Log::instance().getLogContents(current);
+    if (content.length() == 0) {
+        request->send(404, "text/plain", "Log file empty or not found");
+        return;
+    }
+    String fname = current ? "current.log" : "previous.log";
+    AsyncWebServerResponse *resp = request->beginResponse(200, "text/plain", content);
+    resp->addHeader("Content-Disposition", String("attachment; filename=") + fname);
+    request->send(resp);
+#else
+    request->send(400, "text/plain", "File logging disabled at compile time");
+#endif
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_logs_page(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", LOGS_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_log_entries(AsyncWebServerRequest *request) {
+#if LOG_ENABLE_FILE
+    String levelStr = request->hasParam("level") ? request->getParam("level")->value() : String("TRACE");
+    String countStr = request->hasParam("count") ? request->getParam("count")->value() : String("100");
+    String whichStr = request->hasParam("which") ? request->getParam("which")->value() : String("current");
+    size_t count = (size_t)countStr.toInt(); if (count == 0) count = 100;
+    bool current = whichStr != "previous";
+    auto minLvl = Logger::Log::stringToLevel(levelStr.c_str());
+
+    String tail = Logger::Log::instance().tailLog(current, count);
+    // Split lines and filter
+    StaticJsonDocument<4096> doc; // adjust if memory issues
+    JsonArray arr = doc.createNestedArray("entries");
+    int start = 0;
+    while (true) {
+        int idx = tail.indexOf('\n', start);
+        String line = (idx == -1) ? tail.substring(start) : tail.substring(start, idx);
+        if (line.length() == 0) {
+            if (idx == -1) break; else { start = idx + 1; continue; }
+        }
+        // Parse level inside [TIMESTAMP][LEVEL][MODULE]
+        int firstClose = line.indexOf(']');
+        int secondOpen = line.indexOf('[', firstClose + 1);
+        int secondClose = line.indexOf(']', secondOpen + 1);
+        String lvlToken;
+        if (firstClose != -1 && secondOpen != -1 && secondClose != -1) {
+            lvlToken = line.substring(secondOpen + 1, secondClose);
+        }
+        auto lineLvl = Logger::Log::stringToLevel(lvlToken.c_str());
+        if (lineLvl >= minLvl) {
+            JsonObject o = arr.createNestedObject();
+            o["level"] = lvlToken;
+            o["text"] = line;
+        }
+        if (idx == -1) break;
+        start = idx + 1;
+    }
+    String out; serializeJson(doc, out);
+    request->send(200, "application/json", out);
+#else
+    request->send(400, "application/json", "{\"error\":\"file logging disabled\"}");
+#endif
+}
+
+// --------------------------------------------------------------------------------------
 void App::handle_not_found(AsyncWebServerRequest *request) {
     String message = "File Not Found\n\n";
     message += "URI: ";
@@ -230,7 +380,7 @@ void App::handle_status_led_control(AsyncWebServerRequest *request) {
     String error_message;
     if (!request->hasParam("value")) {
         error_message = "Missing 'value' argument";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -277,7 +427,7 @@ void App::handle_set_display_brightness(AsyncWebServerRequest *request) {
 
     if (!request->hasParam("value")) {
         error_message = "Missing 'value' argument";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -295,7 +445,7 @@ void App::handle_set_display_color(AsyncWebServerRequest *request) {
     if (!request->hasParam("color") && !request->hasParam("r") && !request->hasParam("g") && !request->hasParam("b") &&
         !request->hasParam("w")) {
         error_message = "Missing 'color' or 'r', 'g', 'b', 'w' arguments";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -308,7 +458,7 @@ void App::handle_set_display_color(AsyncWebServerRequest *request) {
                 (static_cast<uint8_t>(request->getParam("b")->value().toInt()));
     } else {
         error_message = "Invalid color arguments";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -376,7 +526,7 @@ void App::handle_set_display_color(AsyncWebServerRequest *request) {
 // --------------------------------------------------------------------------------------
 void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    
+
     // Collect body data using helper function
     static String body;
     if (!collectBodyData(data, len, index, total, body)) {
@@ -385,7 +535,7 @@ void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *dat
 
     if (body.length() == 0) {
         error_message = "No data received";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -393,7 +543,7 @@ void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *dat
     JsonDocument doc;
     if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -402,7 +552,7 @@ void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *dat
         error_message = "Invalid matrix format. doc.is<JsonArray>()" + String(doc.is<JsonArray>()) +
                         ", doc.size()=" + String(doc.size()) + ", doc[0].is<JsonArray>()" +
                         String(doc[0].is<JsonArray>()) + ", doc[0].size()=" + String(doc[0].size());
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If matrix format is invalid, send an error response
     }
@@ -416,7 +566,7 @@ void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *dat
 
 void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    
+
     // Collect body data using helper function
     static String body;
     if (!collectBodyData(data, len, index, total, body)) {
@@ -425,7 +575,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
 
     if (body.length() == 0) {
         error_message = "No data received";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -433,7 +583,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
     JsonDocument doc;
     if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If JSON parsing fails, send an error response
     }
@@ -441,7 +591,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
     // Validate the JSON structure
     if (!doc.is<JsonObject>() || !doc.containsKey("time")) {
         error_message = "Invalid alarm format";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return; // If alarm format is invalid, send an error response
     }
@@ -449,7 +599,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
     // Extract the alarm time and days
     AlarmConfig alarm;
     alarm.time = doc["time"].as<String>();
-    
+
     // Convert days array to bitfield
     alarm.days = 0;
     if (doc.containsKey("days")) {
@@ -461,7 +611,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
         alarm.days = 0x7F; // All days if not specified
     }
 
-    Serial.printf("Setting alarm for: %s (days: 0x%02X)\n", alarm.time.c_str(), alarm.days);
+    LOG_INFO("ALARM", "Setting alarm for: %s (days: 0x%02X)", alarm.time.c_str(), alarm.days);
 
     // Add alarm to memory list
     m_alarms.push_back(alarm);
@@ -471,7 +621,7 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
         // If save fails, remove the alarm from memory
         m_alarms.pop_back();
         error_message = "Failed to save alarm";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(500, "text/plain", error_message.c_str());
         return; // If file opening fails, send an error response
     }
@@ -492,14 +642,14 @@ void App::handle_set_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t
 
 // --------------------------------------------------------------------------------------
 void App::handle_list_alarms(AsyncWebServerRequest *request) {
-    Serial.println("Listing alarms");
+    LOG_DEBUG("ALARM", "Listing alarms");
     JsonDocument doc;
     JsonArray alarmsArray = doc.to<JsonArray>();
-    
+
     for (const auto& alarm : m_alarms) {
         JsonObject alarmObj = alarmsArray.createNestedObject();
         alarmObj["time"] = alarm.time;
-        
+
         // Convert bitfield back to array
         JsonArray daysArray = alarmObj.createNestedArray("days");
         for (int i = 0; i < 7; i++) {
@@ -508,7 +658,7 @@ void App::handle_list_alarms(AsyncWebServerRequest *request) {
             }
         }
     }
-    
+
     String response;
     serializeJson(doc, response);
     request->send(200, "application/json", response);
@@ -517,7 +667,7 @@ void App::handle_list_alarms(AsyncWebServerRequest *request) {
 // --------------------------------------------------------------------------------------
 void App::handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    
+
     // Collect body data using helper function
     static String body;
     if (!collectBodyData(data, len, index, total, body)) {
@@ -526,7 +676,7 @@ void App::handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
 
     if (body.length() == 0) {
         error_message = "No data received";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
@@ -534,37 +684,37 @@ void App::handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
     JsonDocument doc;
     if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     if (!doc.containsKey("time")) {
         error_message = "Missing time parameter";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     String timeToDelete = doc["time"].as<String>();
-    
+
     // Find and remove the alarm
     auto it = std::find_if(m_alarms.begin(), m_alarms.end(),
         [&timeToDelete](const AlarmConfig& alarm) { return alarm.time == timeToDelete; });
-    
+
     if (it == m_alarms.end()) {
         error_message = "Alarm not found";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(404, "text/plain", error_message.c_str());
         return;
     }
 
     m_alarms.erase(it);
-    
+
     // Save updated alarms list
     if (!save_alarms_to_file()) {
         error_message = "Failed to save changes";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(500, "text/plain", error_message.c_str());
         return;
     }
@@ -575,7 +725,7 @@ void App::handle_delete_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
 // --------------------------------------------------------------------------------------
 void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     String error_message;
-    
+
     // Collect body data using helper function
     static String body;
     if (!collectBodyData(data, len, index, total, body)) {
@@ -584,7 +734,7 @@ void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
 
     if (body.length() == 0) {
         error_message = "No data received";
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
@@ -592,34 +742,34 @@ void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
     JsonDocument doc;
     if (auto error = deserializeJson(doc, body)) {
         error_message = String("Invalid JSON: ") + String(error.c_str());
-        Serial.printf(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     if (!doc.containsKey("oldTime") || !doc.containsKey("time")) {
         error_message = "Missing oldTime or time parameter";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(400, "text/plain", error_message.c_str());
         return;
     }
 
     String oldTime = doc["oldTime"].as<String>();
-    
+
     // Find the alarm to modify
     auto it = std::find_if(m_alarms.begin(), m_alarms.end(),
         [&oldTime](const AlarmConfig& alarm) { return alarm.time == oldTime; });
-    
+
     if (it == m_alarms.end()) {
         error_message = "Alarm not found";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(404, "text/plain", error_message.c_str());
         return;
     }
 
     // Update the alarm with new values
     it->time = doc["time"].as<String>();
-    
+
     // Update days if provided
     if (doc.containsKey("days")) {
         it->days = 0;
@@ -628,11 +778,11 @@ void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
             it->days |= (1 << day.as<int>());
         }
     }
-    
+
     // Save updated alarms list
     if (!save_alarms_to_file()) {
         error_message = "Failed to save changes";
-        Serial.println(error_message.c_str());
+        LOG_ERROR("SERVER", "%s", error_message.c_str());
         request->send(500, "text/plain", error_message.c_str());
         return;
     }
@@ -645,7 +795,7 @@ void App::handle_modify_alarm(AsyncWebServerRequest *request, uint8_t *data, siz
 bool App::save_alarms_to_file() {
     alarms_file = LittleFS.open("/alarms.bin", "w"); // Open in write mode (overwrites file)
     if (!alarms_file) {
-        Serial.println("Failed to open /alarms.bin for writing");
+        LOG_ERROR("ALARM", "Failed to open /alarms.bin for writing");
         return false;
     }
 
@@ -655,7 +805,7 @@ bool App::save_alarms_to_file() {
     }
 
     alarms_file.close();
-    Serial.println("Alarms saved to /alarms.bin");
+    LOG_INFO("ALARM", "Alarms saved to /alarms.bin");
     return true;
 }
 

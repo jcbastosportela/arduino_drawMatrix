@@ -8,6 +8,7 @@ High-level: ESP8266 firmware serving a small web UI (HTML embedded as PROGMEM st
    - Keep last line: `)html";`
 2. Commit or generate `DrawMatrix/credentials.hpp` (contains WiFi credentials). Never add it to version control examples.
 3. Break the PROGMEM HTML pattern for other pages (`ALARM_HTML.hpp`, `MUSIC_HTML.hpp`, `INDEX_HTML.hpp`). Treat them as C++ string blobs, not normal standalone HTML files.
+4. Create or edit HTML UI pages without mirroring the pattern: Every served page lives as a C++ header with the full raw string literal (opening `const char NAME[] PROGMEM = R"html(` and closing `)html";`). If a source editable `.html` version exists under `DrawMatrix/data/` it MUST preserve the same wrapper lines so tools or symlinks remain consistent. New pages (e.g. logging config/viewer) should follow the same convention: place the development copy in `DrawMatrix/data/` (optional) and the served header in `DrawMatrix/`.
 
 ### Core Architecture
 - Entry point: `DrawMatrix/DrawMatrix.ino` sets up WiFi, NTP, routes, button handlers, schedules periodic tasks via `AsyncTasker`.
@@ -25,6 +26,7 @@ High-level: ESP8266 firmware serving a small web UI (HTML embedded as PROGMEM st
 ### Web / Endpoints (ESP8266WebServer)
 Registered in `DrawMatrix.ino`; handlers implemented in `ServerSys::App`:
 - Pages: `/` (index), `/draw`, `/music`, `/alarm` serve PROGMEM HTML strings.
+- Logging: `/log-settings` (configuration UI), `/logs` (live viewer - to be added). Support endpoints: `/log-config` (GET returns JSON; POST updates `{level,file_logging}`), `/log-clear` (clears current/previous log), `/log-download?which=current|previous`.
 - Matrix control: `/set_display_brightness?value=..`, `/set_display_color`, `/set_display_matrix` (POST JSON NxM array uint32 colors), `/gif` (demo GIF), `/status_led_control`.
 - Alarms: `/set_alarm`, `/list-alarms`, `/delete-alarm`, `/modify-alarm` operate on persisted list.
 - Music: `/music_play?track=<id>` (or toggle if no track), `/music_stop`.
@@ -40,6 +42,7 @@ Registered in `DrawMatrix.ino`; handlers implemented in `ServerSys::App`:
 
 ### Extending Safely
 - When adding endpoints: register in `DrawMatrix.ino` (matching pattern of existing) and implement method on `ServerSys::App`. Keep argument validation + error response style consistent (return 400 plain text with brief reason; log via `Serial.printf`).
+- For new HTML pages: replicate the raw string literal wrapper lines exactly. Do not remove `R"html(` opener or `)html";` terminator. Avoid trailing whitespace after the closing `)html";`.
 - For new persistent data: mount LittleFS early (already in `App` ctor). Use simple line-based formats; minimize writes (flash wear).
 - For new animations: operate through `DrawMatrix::set_matrix` or iterate using `pixel_index`; avoid recomputing the mapping.
 - For new music tracks: extend `MusicTrack` enum and `trackActions` map (folder-based indexing consistent with current usage).

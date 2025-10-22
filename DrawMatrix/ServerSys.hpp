@@ -155,11 +155,41 @@ class App : public IMatrixApp {
      * @brief Handle music page requests
      */
     virtual void handle_music(AsyncWebServerRequest *request);
-    
+
     /**
      * @brief Handle alarm page requests
      */
     virtual void handle_alarm(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Handle logging settings page request
+     */
+    void handle_log_settings(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Handle logging config GET (returns JSON) and POST (updates config)
+     */
+    void handle_log_config(AsyncWebServerRequest *request, uint8_t *data = nullptr, size_t len = 0, size_t index = 0, size_t total = 0);
+
+    /**
+     * @brief Handle clearing log files
+     */
+    void handle_log_clear(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Handle downloading log files
+     */
+    void handle_log_download(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Serve live logs viewer page
+     */
+    void handle_logs_page(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Provide JSON tail of logs with optional min level filtering
+     */
+    void handle_log_entries(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle not found web requests.
@@ -231,7 +261,7 @@ class App : public IMatrixApp {
     struct AlarmConfig {
         String time;        // Time in HH:MM format
         uint8_t days;      // Bitfield for days (bit 0 = Sunday, bit 1 = Monday, etc.)
-        
+
         bool isActiveOnDay(int day) const {
             return (days & (1 << day)) != 0;
         }
@@ -240,7 +270,7 @@ class App : public IMatrixApp {
             return time == other.time && days == other.days;
         }
     };
-    
+
     const NTPClient &m_ntp;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;

@@ -107,38 +107,35 @@ void setup(void) {
     buttons[BUTTON_PLAY_PAUSE].attachClick([]() {
         if (MusicPlayer::get_state() == MusicPlayer::State::STOPPED) {
             LOG_DEBUG("BUTTON", "No track loaded, playing default track (MUSIC_NATURE)");
-            Serial.println("No track loaded, playing default track (MUSIC_NATURE)");
             MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_NATURE);
             return;
         }
         LOG_DEBUG("BUTTON", "Play/Pause button clicked");
-        Serial.println("Play/Pause button clicked");
         MusicPlayer::pause();
     });
     buttons[BUTTON_PLAY_PAUSE].attachLongPressStart([]() {
-        Serial.println("Play/Pause button long pressed");
+        LOG_DEBUG("BUTTON", "Play/Pause button long pressed");
         MusicPlayer::stop();
     });
     buttons[BUTTON_PLAY_PAUSE].attachDoubleClick([]() {
-        Serial.println("Play/Pause button double clicked");
+        LOG_DEBUG("BUTTON", "Play/Pause button double clicked");
         MusicPlayer::next();
     });
 
     buttons[BUTTON_CTRL].attachLongPressStart([]() {
-        Serial.println("Control button long pressed");
+        LOG_DEBUG("BUTTON", "Control button long press start");
         MusicPlayer::start_volume_change();
     });
     buttons[BUTTON_CTRL].attachLongPressStop([]() {
-        Serial.println("Control button long pressed");
+        LOG_DEBUG("BUTTON", "Control button long press stop");
         MusicPlayer::stop_volume_change();
     });
 
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
-    Serial.println("");
 
     app = std::make_unique<ServerSys::App>(ntpClient, []() {
-        Serial.println("Alarm callback triggered!");
+        LOG_INFO("ALARM", "Alarm callback triggered!");
         MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
         MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME); // Set volume to maximum
     });
@@ -148,17 +145,11 @@ void setup(void) {
         delay(500);
         Serial.print("*");
     }
-    Serial.println("");
     LOG_INFO("WIFI", "Connected to %s", ssid);
     LOG_INFO("WIFI", "IP address: %s", WiFi.localIP().toString().c_str());
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
 
     if (MDNS.begin("esp8266")) {
         LOG_INFO("MDNS", "MDNS responder started");
-        Serial.println("MDNS responder started");
     }
     MusicPlayer::init();
 
@@ -177,6 +168,34 @@ void setup(void) {
     server.on("/music", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_music(request);
+    });
+    server.on("/log-settings", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_log_settings(request);
+    });
+    server.on("/log-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_log_config(request);
+    });
+    server.on("/log-config", HTTP_POST, [](AsyncWebServerRequest *request) { updateClientActivity(); }, NULL,
+              [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+                  app->handle_log_config(request, data, len, index, total);
+              });
+    server.on("/log-clear", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_log_clear(request);
+    });
+    server.on("/log-download", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_log_download(request);
+    });
+    server.on("/logs", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_logs_page(request);
+    });
+    server.on("/log-entries", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_log_entries(request);
     });
 
     // Returns JSON with music subsystem info (folders, tracks, current track, volume, online)
@@ -294,7 +313,7 @@ void setup(void) {
     });
     server.on("/wifi_off", [](AsyncWebServerRequest *request) {
         updateClientActivity();
-        Serial.println("Turning WiFi off...");
+        LOG_WARNING("WIFI", "Turning WiFi off...");
         WiFi.disconnect();
         request->send(200, "text/plain", "WiFi turned off");
     });
@@ -302,7 +321,7 @@ void setup(void) {
         updateClientActivity();
         if (request->hasParam("track")) {
             String trackStr = request->getParam("track")->value();
-            Serial.printf("Playing music track: %s\n", trackStr.c_str());
+            LOG_INFO("MUSIC", "Playing music track: %s", trackStr.c_str());
             // convert to int
             int trackInt = trackStr.toInt();
             MusicPlayer::play(static_cast<MusicPlayer::MusicTrack>(trackInt));
@@ -323,7 +342,7 @@ void setup(void) {
         }
         int folder = request->getParam("folder")->value().toInt();
         int track = request->getParam("track")->value().toInt();
-        Serial.printf("Play folder %d track %d\n", folder, track);
+        LOG_INFO("MUSIC", "Play folder %d track %d", folder, track);
         MusicPlayer::play_folder_track(static_cast<uint8_t>(folder), static_cast<uint16_t>(track));
         request->send(200, "text/plain", "Playing folder " + String(folder) + " track " + String(track));
     });
@@ -418,7 +437,7 @@ void setup(void) {
     });
     server.on("/music_stop", [](AsyncWebServerRequest *request) {
         updateClientActivity();
-        Serial.println("Stopping music...");
+        LOG_INFO("MUSIC", "Stopping music...");
         MusicPlayer::stop();
         request->send(200, "text/plain", "Music stopped");
     });
@@ -517,12 +536,10 @@ void setup(void) {
 #endif // 0
     server.begin();
     LOG_INFO("SERVER", "HTTP server started");
-    Serial.println("HTTP server started");
 
     // Initialize AsyncElegantOTA
     ElegantOTA.begin(&server);
     LOG_INFO("OTA", "OTA Update available at: http://%s/update", WiFi.localIP().toString().c_str());
-    Serial.println("OTA Update available at: http://" + WiFi.localIP().toString() + "/update");
 
     AsyncTasker::schedule(
         SERVER_CHECK_INTERVAL,
@@ -536,15 +553,12 @@ void setup(void) {
             if (hasDisplayActivity) {
                 n_fails = 0;
                 LOG_DEBUG("DISPLAY", "Display activity detected - clock mode OFF");
-                Serial.println("Display activity detected - clock mode OFF");
                 app->clock_mode(false);
             } else {
                 LOG_DEBUG("DISPLAY", "No display activity");
-                Serial.println("No display activity");
                 n_fails++;
                 if (n_fails > MAX_NUM_TRIES_NO_CLIENT) {
                     LOG_INFO("DISPLAY", "No display activity - enabling clock mode");
-                    Serial.println("No display activity - enabling clock mode");
                     n_fails = 0;
                     app->clock_mode(true);
                 }
@@ -564,12 +578,12 @@ void setup(void) {
             // If currently reconnecting, check status
             if (reconnecting) {
                 if (WiFi.status() == WL_CONNECTED) {
-                    Serial.println("\nWiFi reconnected successfully!");
+                    LOG_INFO("WIFI", "WiFi reconnected successfully!");
                     reconnecting = false;
                     fail_sync_count = 0;
                     return;
                 } else if (millis() - reconnect_start > RECONNECT_TIMEOUT) {
-                    Serial.println("\nWiFi reconnection timeout. Retrying...");
+                    LOG_WARNING("WIFI", "WiFi reconnection timeout. Retrying...");
                     WiFi.disconnect();
                     WiFi.begin(ssid, password);
                     reconnect_start = millis();
@@ -582,8 +596,6 @@ void setup(void) {
                 if ((WiFi.status() != WL_CONNECTED) ||
                     (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1))) {
                     LOG_WARNING("NTP", "NTP sync failed. WiFi status: %d. Re-connecting...", WiFi.status());
-                    Serial.println("NTP sync failed. No WiFi? Wifi status: " + String(WiFi.status()) +
-                                   ". Re-connecting...");
                     fail_sync_count = 0;
                     reconnecting = true;
                     reconnect_start = millis();

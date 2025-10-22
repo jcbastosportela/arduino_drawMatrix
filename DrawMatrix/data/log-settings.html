@@ -1,0 +1,74 @@
+const char LOG_SETTINGS_HTML[] PROGMEM = R"html(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <title>Logging Settings</title>
+  <style>
+    body {background:#121212;color:#eee;font-family: system-ui, Arial, sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+    h1 {font-size:1.6rem;margin:24px 0 8px;color:#fff;}
+    .card {background:#1e1e1e;padding:20px 24px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,0.4);width:100%;max-width:480px;display:flex;flex-direction:column;gap:18px;}
+    label {display:block;margin-bottom:6px;font-weight:600;font-size:0.9rem;letter-spacing:.5px;color:#ccc;}
+    select, input[type=checkbox] {accent-color:#6c5ce7;}
+    select {width:100%;padding:10px 12px;background:#232323;color:#eee;border:1px solid #2e2e2e;border-radius:8px;font-size:0.95rem;}
+    .row {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .toggle {display:flex;align-items:center;gap:10px;}
+    button {background:linear-gradient(45deg,#6c5ce7,#8e44ad);color:#fff;border:none;padding:12px 18px;font-size:0.95rem;border-radius:10px;cursor:pointer;font-weight:600;letter-spacing:.5px;transition:filter .2s,opacity .2s;}
+    button.secondary {background:#333;}
+    button:hover {filter:brightness(1.1);}button:active{filter:brightness(.85);}button.danger{background:#c0392b;}
+    .actions {display:flex;flex-wrap:wrap;gap:10px;}
+    .status {font-size:0.8rem;color:#9f9f9f;min-height:1.1em;}
+    .inline {display:inline-block;margin-left:4px;font-size:0.8rem;color:#999;}
+    .pill {display:inline-block;background:#2e2e2e;padding:4px 10px;border-radius:20px;font-size:0.7rem;margin-right:6px;}
+    .footer {margin-top:8px;font-size:0.65rem;color:#666;text-align:center;}
+    a {color:#6c5ce7;text-decoration:none;}a:hover{text-decoration:underline;}
+    @media (max-width:520px){.card{border-radius:0;box-shadow:none;min-height:100vh;}}
+  </style>
+</head>
+<body>
+  <h1>Logging Settings</h1>
+  <div class="card">
+    <div>
+      <label for="logLevel">Log Level</label>
+      <select id="logLevel">
+        <option value="TRACE">TRACE</option>
+        <option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+        <option value="NONE">NONE</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="toggle">
+        <input type="checkbox" id="fileLogging" />
+        <label for="fileLogging">File logging enabled <span class="inline" id="fileSize"></span></label>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveBtn">Save Settings</button>
+      <button id="downloadBtn" class="secondary">Download Current Log</button>
+      <button id="downloadPrevBtn" class="secondary">Download Previous Log</button>
+      <button id="clearBtn" class="danger">Clear Logs</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div>
+      <span class="pill" id="runtimeLevel"></span>
+      <span class="pill" id="fileEnabled"></span>
+    </div>
+    <div class="footer">ESP8266 Logging Control • <a href="/">Home</a> • <a href="/logs">Live Logs</a></div>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    function setStatus(msg, ok=true){statusEl.textContent=msg;statusEl.style.color=ok?'#6c5ce7':'#e74c3c';}
+    function fetchConfig(){fetch('/log-config').then(r=>r.json()).then(cfg=>{document.getElementById('logLevel').value=cfg.level;document.getElementById('fileLogging').checked=!!cfg.file_logging;document.getElementById('fileSize').textContent=cfg.current_log_size?`(${cfg.current_log_size} bytes)`:'';document.getElementById('runtimeLevel').textContent='Level: '+cfg.level;document.getElementById('fileEnabled').textContent='File: '+(cfg.file_logging?'ON':'OFF');}).catch(e=>setStatus('Failed loading config',false));}
+    document.getElementById('saveBtn').addEventListener('click',()=>{const payload={level:document.getElementById('logLevel').value,file_logging:document.getElementById('fileLogging').checked?1:0};fetch('/log-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>{if(!r.ok) throw new Error('HTTP '+r.status);return r.text();}).then(()=>{setStatus('Settings saved');fetchConfig();}).catch(e=>setStatus('Save failed',false));});
+    document.getElementById('downloadBtn').addEventListener('click',()=>{window.location='/log-download?which=current';});
+    document.getElementById('downloadPrevBtn').addEventListener('click',()=>{window.location='/log-download?which=previous';});
+    document.getElementById('clearBtn').addEventListener('click',()=>{if(!confirm('Clear both log files?'))return;fetch('/log-clear').then(r=>{if(!r.ok) throw new Error('HTTP '+r.status);return r.text();}).then(()=>{setStatus('Logs cleared');fetchConfig();}).catch(e=>setStatus('Clear failed',false));});
+    fetchConfig();
+  </script>
+</body>
+</html>
+)html";
