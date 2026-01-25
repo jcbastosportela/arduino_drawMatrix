@@ -210,7 +210,7 @@ void Log::loadConfig() {
     String content = f.readString();
     f.close();
 
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     auto err = deserializeJson(doc, content);
     if (err) {
         log(LOG_LEVEL_ERROR, "LOGGER", "Config JSON parse error: %s", err.c_str());
@@ -231,7 +231,7 @@ void Log::saveConfig() {
     if (!LittleFS.exists("/config")) {
         LittleFS.mkdir("/config");
     }
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     doc["level"] = levelToString(m_currentLevel);
     doc["file_logging"] = m_fileLoggingEnabled ? 1 : 0;
     String out; serializeJson(doc, out);

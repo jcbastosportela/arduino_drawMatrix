@@ -325,7 +325,7 @@ void App::handle_log_entries(AsyncWebServerRequest *request) {
 
     String tail = Logger::Log::instance().tailLog(current, count);
     // Split lines and filter
-    StaticJsonDocument<4096> doc; // adjust if memory issues
+    JsonDocument doc; // adjust if memory issues
     JsonArray arr = doc.createNestedArray("entries");
     int start = 0;
     while (true) {

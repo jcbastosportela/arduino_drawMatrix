@@ -225,7 +225,7 @@ class Log {
 #endif
 
   private:
-    LogLevel m_currentLevel;       ///< Current runtime log level
+    LogLevel m_currentLevel;        ///< Current runtime log level
     char m_buffer[LOG_BUFFER_SIZE]; ///< Message formatting buffer
 
 #if LOG_ENABLE_FILE
@@ -243,35 +243,34 @@ class Log {
 
 // Log macros - only compile if level meets compile-time threshold
 #if LOG_IF_COMPILED(LOG_LEVEL_TRACE)
-#define LOG_TRACE(module, format, ...) \
+#define LOG_TRACE(module, format, ...)                                                                                 \
     Logger::Log::instance().log(Logger::LOG_LEVEL_TRACE, module, format, ##__VA_ARGS__)
 #else
 #define LOG_TRACE(module, format, ...) ((void)0)
 #endif
 
 #if LOG_IF_COMPILED(LOG_LEVEL_DEBUG)
-#define LOG_DEBUG(module, format, ...) \
+#define LOG_DEBUG(module, format, ...)                                                                                 \
     Logger::Log::instance().log(Logger::LOG_LEVEL_DEBUG, module, format, ##__VA_ARGS__)
 #else
 #define LOG_DEBUG(module, format, ...) ((void)0)
 #endif
 
 #if LOG_IF_COMPILED(LOG_LEVEL_INFO)
-#define LOG_INFO(module, format, ...) \
-    Logger::Log::instance().log(Logger::LOG_LEVEL_INFO, module, format, ##__VA_ARGS__)
+#define LOG_INFO(module, format, ...) Logger::Log::instance().log(Logger::LOG_LEVEL_INFO, module, format, ##__VA_ARGS__)
 #else
 #define LOG_INFO(module, format, ...) ((void)0)
 #endif
 
 #if LOG_IF_COMPILED(LOG_LEVEL_WARNING)
-#define LOG_WARNING(module, format, ...) \
+#define LOG_WARNING(module, format, ...)                                                                               \
     Logger::Log::instance().log(Logger::LOG_LEVEL_WARNING, module, format, ##__VA_ARGS__)
 #else
 #define LOG_WARNING(module, format, ...) ((void)0)
 #endif
 
 #if LOG_IF_COMPILED(LOG_LEVEL_ERROR)
-#define LOG_ERROR(module, format, ...) \
+#define LOG_ERROR(module, format, ...)                                                                                 \
     Logger::Log::instance().log(Logger::LOG_LEVEL_ERROR, module, format, ##__VA_ARGS__)
 #else
 #define LOG_ERROR(module, format, ...) ((void)0)

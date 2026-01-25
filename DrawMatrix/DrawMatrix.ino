@@ -201,7 +201,7 @@ void setup(void) {
     // Returns JSON with music subsystem info (folders, tracks, current track, volume, online)
     server.on("/music_info", [](AsyncWebServerRequest *request) {
         updateClientActivity();
-        StaticJsonDocument<768> doc;
+        JsonDocument doc;
 
         MusicPlayer::run();
 
@@ -289,7 +289,7 @@ void setup(void) {
     });
     server.on("/info", [](AsyncWebServerRequest *request) {
         updateClientActivity(); // Info requests don't affect display
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["chip_id"] = ESP.getChipId();
         doc["core_version"] = ESP.getCoreVersion();
         doc["sdk_version"] = ESP.getSdkVersion();
@@ -411,7 +411,7 @@ void setup(void) {
         }
 
         uint8_t folder = request->getParam("folder")->value().toInt();
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
 
         doc["folder"] = folder;
         doc["has_content_data"] = MusicPlayer::has_content_data();
