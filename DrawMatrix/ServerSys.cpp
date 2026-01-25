@@ -890,7 +890,55 @@ void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp
     matrix.setBrightness(MIN_BRIGHTNESS);
     matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
 
-#ifdef CLOCK_MODE_PROGRESS_BAR
+#ifdef CLOCK_MODE_INDICATOR
+    // Indicator mode: show first, last, and current position dots only
+    // Hours bar: rows 2-3 (0-23 hours using 24 of 32 columns)
+    // Minutes bar: rows 10-11 (0-59 minutes using 60 of 64 dots across 2 rows)
+    // Seconds bar: rows 18-19 (0-59 seconds using 60 of 64 dots across 2 rows)
+
+    const uint8_t hours = ntp.hours();     // 0-23
+    const uint8_t minutes = ntp.minutes(); // 0-59
+    const uint8_t seconds = ntp.seconds(); // 0-59
+
+    // Hours bar: 24 dots (centered: columns 4-27)
+    const uint8_t hours_start_col = 4;
+    // First dot (0)
+    matrix.drawPixel(hours_start_col + 0, 2, Adafruit_NeoMatrix::Color(120, 0, 0));
+    matrix.drawPixel(hours_start_col + 0, 3, Adafruit_NeoMatrix::Color(120, 0, 0));
+    // Last dot (23)
+    matrix.drawPixel(hours_start_col + 23, 2, Adafruit_NeoMatrix::Color(120, 0, 0));
+    matrix.drawPixel(hours_start_col + 23, 3, Adafruit_NeoMatrix::Color(120, 0, 0));
+    // Current dot
+    matrix.drawPixel(hours_start_col + hours, 2, Adafruit_NeoMatrix::Color(200, 0, 0));
+    matrix.drawPixel(hours_start_col + hours, 3, Adafruit_NeoMatrix::Color(200, 0, 0));
+
+    // Minutes bar: 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
+    const uint8_t minutes_start_col = 1;
+    // First dot (0)
+    matrix.drawPixel(minutes_start_col + 0, 10, Adafruit_NeoMatrix::Color(0, 120, 0));
+    // Last dot (59)
+    uint8_t min_last_col = minutes_start_col + (59 % 30);
+    uint8_t min_last_row = 10 + (59 / 30);
+    matrix.drawPixel(min_last_col, min_last_row, Adafruit_NeoMatrix::Color(0, 120, 0));
+    // Current dot
+    uint8_t min_cur_col = minutes_start_col + (minutes % 30);
+    uint8_t min_cur_row = 10 + (minutes / 30);
+    matrix.drawPixel(min_cur_col, min_cur_row, Adafruit_NeoMatrix::Color(0, 200, 0));
+
+    // Seconds bar: 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
+    const uint8_t seconds_start_col = 1;
+    // First dot (0)
+    matrix.drawPixel(seconds_start_col + 0, 18, Adafruit_NeoMatrix::Color(0, 0, 120));
+    // Last dot (59)
+    uint8_t sec_last_col = seconds_start_col + (59 % 30);
+    uint8_t sec_last_row = 18 + (59 / 30);
+    matrix.drawPixel(sec_last_col, sec_last_row, Adafruit_NeoMatrix::Color(0, 0, 120));
+    // Current dot
+    uint8_t sec_cur_col = seconds_start_col + (seconds % 30);
+    uint8_t sec_cur_row = 18 + (seconds / 30);
+    matrix.drawPixel(sec_cur_col, sec_cur_row, Adafruit_NeoMatrix::Color(0, 0, 200));
+
+#elif defined(CLOCK_MODE_PROGRESS_BAR)
     // Progress bar mode: 3 horizontal bars for hours, minutes, seconds
     // Hours bar: rows 2-3 (0-23 hours using 24 of 32 columns)
     // Minutes bar: rows 10-11 (0-59 minutes using 60 of 64 dots across 2 rows)

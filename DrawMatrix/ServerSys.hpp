@@ -26,8 +26,11 @@
 
 namespace ServerSys {
 
-// Clock mode: define CLOCK_MODE_PROGRESS_BAR for progress bars, otherwise uses text display
-#define CLOCK_MODE_PROGRESS_BAR
+// Clock mode options (define only one):
+// CLOCK_MODE_PROGRESS_BAR - filled progress bars
+// CLOCK_MODE_INDICATOR - shows first, last, and current position dots only
+// (none) - text display
+#define CLOCK_MODE_INDICATOR
 
 // Number of columns in a single WS2812B-64 LED matrix tile
 constexpr uint8_t MATRIX_WIDTH = 8;
