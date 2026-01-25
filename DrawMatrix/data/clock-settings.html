@@ -1,0 +1,192 @@
+const char CLOCK_SETTINGS_HTML[] PROGMEM = R"html(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <title>Clock Settings</title>
+  <style>
+    body {background:#121212;color:#eee;font-family: system-ui, Arial, sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+    h1 {font-size:1.6rem;margin:24px 0 8px;color:#fff;}
+    .card {background:#1e1e1e;padding:20px 24px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,0.4);width:100%;max-width:480px;display:flex;flex-direction:column;gap:18px;}
+    label {display:block;margin-bottom:6px;font-weight:600;font-size:0.9rem;letter-spacing:.5px;color:#ccc;}
+    select {accent-color:#6c5ce7;width:100%;padding:10px 12px;background:#232323;color:#eee;border:1px solid #2e2e2e;border-radius:8px;font-size:0.95rem;}
+    .color-input-group {display:flex;align-items:center;gap:10px;}
+    input[type=color] {width:50px;height:40px;border:none;border-radius:6px;cursor:pointer;background:transparent;}
+    input[type=text] {flex:1;padding:8px 12px;background:#232323;color:#eee;border:1px solid #2e2e2e;border-radius:8px;font-family:monospace;font-size:0.95rem;}
+    button {background:linear-gradient(45deg,#6c5ce7,#8e44ad);color:#fff;border:none;padding:12px 18px;font-size:0.95rem;border-radius:10px;cursor:pointer;font-weight:600;letter-spacing:.5px;transition:filter .2s,opacity .2s;}
+    button:hover {filter:brightness(1.1);}
+    button:active{filter:brightness(.85);}
+    .status {font-size:0.8rem;color:#9f9f9f;min-height:1.1em;}
+    .pill {display:inline-block;background:#2e2e2e;padding:4px 10px;border-radius:20px;font-size:0.7rem;margin-right:6px;}
+    .footer {margin-top:8px;font-size:0.65rem;color:#666;text-align:center;}
+    a {color:#6c5ce7;text-decoration:none;}
+    a:hover{text-decoration:underline;}
+    .preview {background:#0a0a0a;border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px;align-items:center;}
+    .preview-label {font-size:0.8rem;color:#999;margin-bottom:4px;}
+    .preview-bar {display:flex;gap:4px;align-items:center;}
+    .preview-dot {width:12px;height:12px;border-radius:2px;}
+    @media (max-width:520px){.card{border-radius:0;box-shadow:none;min-height:100vh;}}
+  </style>
+</head>
+<body>
+  <h1>Clock Settings</h1>
+  <div class="card">
+    <div>
+      <label for="clockMode">Clock Display Mode</label>
+      <select id="clockMode">
+        <option value="0">Text - Scrolling Numbers</option>
+        <option value="1">Progress Bar - Filled Bars</option>
+        <option value="2">Indicator - Position Dots</option>
+      </select>
+    </div>
+
+    <div class="preview">
+      <div class="preview-label">Color Preview</div>
+      <div class="preview-bar">
+        <span style="font-size:0.7rem;">Hours:</span>
+        <div class="preview-dot" id="hoursPreview"></div>
+      </div>
+      <div class="preview-bar">
+        <span style="font-size:0.7rem;">Minutes:</span>
+        <div class="preview-dot" id="minutesPreview"></div>
+      </div>
+      <div class="preview-bar">
+        <span style="font-size:0.7rem;">Seconds:</span>
+        <div class="preview-dot" id="secondsPreview"></div>
+      </div>
+    </div>
+
+    <div>
+      <label for="hoursColor">Hours Color</label>
+      <div class="color-input-group">
+        <input type="color" id="hoursColor" />
+        <input type="text" id="hoursColorHex" maxlength="7" placeholder="#FF0000" />
+      </div>
+    </div>
+
+    <div>
+      <label for="minutesColor">Minutes Color</label>
+      <div class="color-input-group">
+        <input type="color" id="minutesColor" />
+        <input type="text" id="minutesColorHex" maxlength="7" placeholder="#00FF00" />
+      </div>
+    </div>
+
+    <div>
+      <label for="secondsColor">Seconds Color</label>
+      <div class="color-input-group">
+        <input type="color" id="secondsColor" />
+        <input type="text" id="secondsColorHex" maxlength="7" placeholder="#0000FF" />
+      </div>
+    </div>
+
+    <button id="saveBtn">Save Clock Settings</button>
+    <div class="status" id="status"></div>
+
+    <div>
+      <span class="pill" id="currentMode"></span>
+    </div>
+
+    <div class="footer">ESP8266 Clock Configuration • <a href="/">Home</a></div>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    function setStatus(msg, ok=true){statusEl.textContent=msg;statusEl.style.color=ok?'#6c5ce7':'#e74c3c';}
+
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : null;
+    }
+
+    function rgbToHex(r, g, b) {
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+
+    function colorToInt(hex) {
+      const rgb = hexToRgb(hex);
+      return rgb ? (rgb.r << 16) | (rgb.g << 8) | rgb.b : 0;
+    }
+
+    function intToHex(num) {
+      const r = (num >> 16) & 0xFF;
+      const g = (num >> 8) & 0xFF;
+      const b = num & 0xFF;
+      return rgbToHex(r, g, b);
+    }
+
+    function syncColorInputs(colorInput, hexInput) {
+      colorInput.addEventListener('input', () => {
+        hexInput.value = colorInput.value.toUpperCase();
+        updatePreviews();
+      });
+      hexInput.addEventListener('input', () => {
+        if (/^#[0-9A-F]{6}$/i.test(hexInput.value)) {
+          colorInput.value = hexInput.value;
+          updatePreviews();
+        }
+      });
+    }
+
+    function updatePreviews() {
+      document.getElementById('hoursPreview').style.backgroundColor = document.getElementById('hoursColor').value;
+      document.getElementById('minutesPreview').style.backgroundColor = document.getElementById('minutesColor').value;
+      document.getElementById('secondsPreview').style.backgroundColor = document.getElementById('secondsColor').value;
+    }
+
+    syncColorInputs(document.getElementById('hoursColor'), document.getElementById('hoursColorHex'));
+    syncColorInputs(document.getElementById('minutesColor'), document.getElementById('minutesColorHex'));
+    syncColorInputs(document.getElementById('secondsColor'), document.getElementById('secondsColorHex'));
+
+    function fetchConfig(){
+      fetch('/clock-config').then(r=>r.json()).then(cfg=>{
+        document.getElementById('clockMode').value = cfg.mode;
+
+        const hoursHex = intToHex(cfg.hours_color);
+        const minutesHex = intToHex(cfg.minutes_color);
+        const secondsHex = intToHex(cfg.seconds_color);
+
+        document.getElementById('hoursColor').value = hoursHex;
+        document.getElementById('hoursColorHex').value = hoursHex;
+        document.getElementById('minutesColor').value = minutesHex;
+        document.getElementById('minutesColorHex').value = minutesHex;
+        document.getElementById('secondsColor').value = secondsHex;
+        document.getElementById('secondsColorHex').value = secondsHex;
+
+        updatePreviews();
+
+        const modes = ['Text', 'Progress Bar', 'Indicator'];
+        document.getElementById('currentMode').textContent = 'Mode: ' + modes[cfg.mode];
+      }).catch(e=>setStatus('Failed loading config',false));
+    }
+
+    document.getElementById('saveBtn').addEventListener('click',()=>{
+      const payload = {
+        mode: parseInt(document.getElementById('clockMode').value),
+        hours_color: colorToInt(document.getElementById('hoursColor').value),
+        minutes_color: colorToInt(document.getElementById('minutesColor').value),
+        seconds_color: colorToInt(document.getElementById('secondsColor').value)
+      };
+
+      fetch('/clock-config',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      }).then(r=>{
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.text();
+      }).then(()=>{
+        setStatus('Clock settings saved');
+        fetchConfig();
+      }).catch(e=>setStatus('Save failed',false));
+    });
+
+    fetchConfig();
+  </script>
+</body>
+</html>
+)html";

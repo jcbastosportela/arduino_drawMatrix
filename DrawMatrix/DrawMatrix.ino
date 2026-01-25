@@ -185,6 +185,18 @@ void setup(void) {
         updateClientActivity();
         app->handle_log_settings(request);
     });
+    server.on("/clock-settings", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_clock_settings(request);
+    });
+    server.on("/clock-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        app->handle_clock_config(request);
+    });
+    server.on("/clock-config", HTTP_POST, [](AsyncWebServerRequest *request) { updateClientActivity(); }, NULL,
+              [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+                  app->handle_clock_config(request, data, len, index, total);
+              });
     server.on("/log-config", HTTP_GET, [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_log_config(request);

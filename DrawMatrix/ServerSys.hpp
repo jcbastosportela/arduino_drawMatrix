@@ -26,11 +26,20 @@
 
 namespace ServerSys {
 
-// Clock mode options (define only one):
-// CLOCK_MODE_PROGRESS_BAR - filled progress bars
-// CLOCK_MODE_INDICATOR - shows first, last, and current position dots only
-// (none) - text display
-#define CLOCK_MODE_INDICATOR
+// Clock display modes
+enum class ClockMode : uint8_t {
+    TEXT = 0,        // Scrolling text display
+    PROGRESS_BAR = 1, // Filled progress bars
+    INDICATOR = 2     // First/last/current dots only
+};
+
+// Clock configuration (mode + colors)
+struct ClockConfig {
+    ClockMode mode = ClockMode::INDICATOR;
+    uint32_t hours_color = 0xFF0000;    // Red
+    uint32_t minutes_color = 0x00FF00;  // Green
+    uint32_t seconds_color = 0x0000FF;  // Blue
+};
 
 // Number of columns in a single WS2812B-64 LED matrix tile
 constexpr uint8_t MATRIX_WIDTH = 8;
@@ -130,8 +139,9 @@ struct DrawMatrix : public ITask {
      * @param repeat Repeat flag (out)
      * @param ntp NTP client providing hours/minutes/seconds
      * @param clock_mode Whether clock mode is enabled
+    * @param clock_config Clock display configuration (mode and colors)
      */
-    void draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode);
+    void draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode, const ClockConfig &clock_config);
 
     Adafruit_NeoMatrix matrix;
     uint8_t hue;
@@ -267,12 +277,34 @@ class App : public IMatrixApp {
      */
     void clock_mode(bool enable);
 
+        /**
+         * @brief Handle clock settings page request
+         */
+        void handle_clock_settings(AsyncWebServerRequest *request);
+
+        /**
+         * @brief Handle clock config GET (returns JSON) and POST (updates config)
+         */
+        void handle_clock_config(AsyncWebServerRequest *request, uint8_t *data = nullptr, size_t len = 0, size_t index = 0, size_t total = 0);
+
   private:
     /**
      * @brief Save all alarms to file
      * @return true if successful, false otherwise
      */
     bool save_alarms_to_file();
+
+    /**
+     * @brief Save clock settings to file
+     * @return true if successful, false otherwise
+     */
+    bool save_clock_config_to_file();
+
+    /**
+     * @brief Load clock settings from file
+     * @return true if successful, false otherwise
+     */
+    bool load_clock_config_from_file();
 
   private:
     /**
@@ -297,6 +329,7 @@ class App : public IMatrixApp {
     DrawMatrix m_task_draw_matrix;
     bool m_clock_mode;
     std::list<AlarmConfig> m_alarms;
+    ClockConfig m_clock_config;
     std::function<void()> m_alarm_callback;
 };
 

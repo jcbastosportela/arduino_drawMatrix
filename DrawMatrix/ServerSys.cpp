@@ -23,6 +23,7 @@
 #include "INDEX_HTML.hpp"
 #include "LOG_SETTINGS_HTML.hpp"
 #include "LOGS_HTML.hpp"
+#include "CLOCK_SETTINGS_HTML.hpp"
 
 #include "AsyncTasker.hpp"
 
@@ -100,6 +101,9 @@ App::App(NTP &ntp, std::function<void()> alarm_callback)
         }
     }
 
+    // Load clock configuration from persistent storage
+    load_clock_config_from_file();
+
     // Schedule the clock matrix drawing task via bind to DrawMatrix method
     AsyncTasker::schedule(
         1000,
@@ -109,7 +113,8 @@ App::App(NTP &ntp, std::function<void()> alarm_callback)
                   std::placeholders::_2,
                   std::placeholders::_3,
                   std::ref(m_ntp),
-                  std::cref(m_clock_mode)),
+                  std::cref(m_clock_mode),
+                  std::cref(m_clock_config)),
         true);
 
     AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
@@ -307,6 +312,78 @@ void App::handle_log_entries(AsyncWebServerRequest *request) {
 #else
     request->send(400, "application/json", "{\"error\":\"file logging disabled\"}");
 #endif
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_clock_settings(AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", CLOCK_SETTINGS_HTML);
+}
+
+// --------------------------------------------------------------------------------------
+void App::handle_clock_config(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    // GET: return current config JSON
+    if (request->method() == HTTP_GET) {
+        JsonDocument doc;
+        doc["mode"] = static_cast<uint8_t>(m_clock_config.mode);
+        doc["hours_color"] = m_clock_config.hours_color;
+        doc["minutes_color"] = m_clock_config.minutes_color;
+        doc["seconds_color"] = m_clock_config.seconds_color;
+        String out;
+        serializeJson(doc, out);
+        request->send(200, "application/json", out);
+        return;
+    }
+
+    // POST: body contains JSON {mode:..., hours_color:..., minutes_color:..., seconds_color:...}
+    static String body;
+    if (request->method() == HTTP_POST) {
+        if (!collectBodyData(data, len, index, total, body)) {
+            return; // wait for full body
+        }
+        if (body.length() == 0) {
+            request->send(400, "text/plain", "Empty body");
+            LOG_ERROR("SERVER", "%s", "Empty body for clock-config POST");
+            return;
+        }
+        JsonDocument doc;
+        if (auto err = deserializeJson(doc, body)) {
+            request->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+            LOG_ERROR("SERVER", "Invalid JSON for clock-config: %s", err.c_str());
+            return;
+        }
+        if (!doc.containsKey("mode")) {
+            request->send(400, "text/plain", "Missing 'mode'");
+            LOG_ERROR("SERVER", "%s", "Missing 'mode' in clock-config POST");
+            return;
+        }
+
+        uint8_t mode = doc["mode"].as<uint8_t>();
+        if (mode > 2) {
+            request->send(400, "text/plain", "Invalid mode (must be 0-2)");
+            LOG_ERROR("SERVER", "Invalid mode: %d", mode);
+            return;
+        }
+
+        m_clock_config.mode = static_cast<ClockMode>(mode);
+        m_clock_config.hours_color = doc.containsKey("hours_color") ? doc["hours_color"].as<uint32_t>() : m_clock_config.hours_color;
+        m_clock_config.minutes_color = doc.containsKey("minutes_color") ? doc["minutes_color"].as<uint32_t>() : m_clock_config.minutes_color;
+        m_clock_config.seconds_color = doc.containsKey("seconds_color") ? doc["seconds_color"].as<uint32_t>() : m_clock_config.seconds_color;
+
+        LOG_INFO("SERVER", "Clock config updated: mode=%d, colors=0x%06X/0x%06X/0x%06X",
+            static_cast<int>(m_clock_config.mode),
+            m_clock_config.hours_color,
+            m_clock_config.minutes_color,
+            m_clock_config.seconds_color);
+
+        // Persist configuration changes
+        if (!save_clock_config_to_file()) {
+            LOG_ERROR("SERVER", "%s", "Failed to save clock config");
+        }
+
+        request->send(200, "text/plain", "Clock config updated");
+        return;
+    }
+    request->send(405, "text/plain", "Method Not Allowed");
 }
 
 // --------------------------------------------------------------------------------------
@@ -761,6 +838,77 @@ bool App::save_alarms_to_file() {
 }
 
 // --------------------------------------------------------------------------------------
+bool App::save_clock_config_to_file() {
+    File configFile = LittleFS.open("/clock.cfg", "w");
+    if (!configFile) {
+        LOG_ERROR("CLOCK", "Failed to open /clock.cfg for writing");
+        return false;
+    }
+
+    JsonDocument doc;
+    doc["mode"] = static_cast<uint8_t>(m_clock_config.mode);
+    doc["hours_color"] = m_clock_config.hours_color;
+    doc["minutes_color"] = m_clock_config.minutes_color;
+    doc["seconds_color"] = m_clock_config.seconds_color;
+
+    if (serializeJson(doc, configFile) == 0) {
+        LOG_ERROR("CLOCK", "Failed to serialize clock config");
+        configFile.close();
+        return false;
+    }
+
+    configFile.close();
+    LOG_INFO("CLOCK", "Clock config saved to /clock.cfg");
+    return true;
+}
+
+// --------------------------------------------------------------------------------------
+bool App::load_clock_config_from_file() {
+    if (!LittleFS.exists("/clock.cfg")) {
+        LOG_INFO("CLOCK", "No clock config file found, using defaults");
+        return false;
+    }
+
+    File configFile = LittleFS.open("/clock.cfg", "r");
+    if (!configFile) {
+        LOG_ERROR("CLOCK", "Failed to open /clock.cfg for reading");
+        return false;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, configFile);
+    configFile.close();
+
+    if (err) {
+        LOG_ERROR("CLOCK", "Failed to parse clock config: %s", err.c_str());
+        return false;
+    }
+
+    if (doc.containsKey("mode")) {
+        uint8_t mode = doc["mode"].as<uint8_t>();
+        if (mode <= 2) {
+            m_clock_config.mode = static_cast<ClockMode>(mode);
+        }
+    }
+    if (doc.containsKey("hours_color")) {
+        m_clock_config.hours_color = doc["hours_color"].as<uint32_t>();
+    }
+    if (doc.containsKey("minutes_color")) {
+        m_clock_config.minutes_color = doc["minutes_color"].as<uint32_t>();
+    }
+    if (doc.containsKey("seconds_color")) {
+        m_clock_config.seconds_color = doc["seconds_color"].as<uint32_t>();
+    }
+
+    LOG_INFO("CLOCK", "Loaded clock config: mode=%d, colors=0x%06X/0x%06X/0x%06X",
+        static_cast<int>(m_clock_config.mode),
+        m_clock_config.hours_color,
+        m_clock_config.minutes_color,
+        m_clock_config.seconds_color);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------
 void HeartBeatBlink::execute(uint64_t t, uint64_t &d, bool &repeat) {
     if (!m_led_state) {
         return;
@@ -882,7 +1030,7 @@ void DrawMatrix::set_matrix(const JsonDocument &matrix_disp) {
 }
 
 // --------------------------------------------------------------------------------------
-void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode) {
+void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode, const ClockConfig &clock_config) {
     if (!clock_mode) {
         return;
     }
@@ -890,123 +1038,120 @@ void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp
     matrix.setBrightness(MIN_BRIGHTNESS);
     matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
 
-#ifdef CLOCK_MODE_INDICATOR
-    // Indicator mode: show first, last, and current position dots only
-    // Hours bar: rows 2-3 (0-23 hours using 24 of 32 columns)
-    // Minutes bar: rows 10-11 (0-59 minutes using 60 of 64 dots across 2 rows)
-    // Seconds bar: rows 18-19 (0-59 seconds using 60 of 64 dots across 2 rows)
-
     const uint8_t hours = ntp.hours();     // 0-23
     const uint8_t minutes = ntp.minutes(); // 0-59
     const uint8_t seconds = ntp.seconds(); // 0-59
 
-    // Hours bar: 24 dots (centered: columns 4-27)
-    const uint8_t hours_start_col = 4;
-    // First dot (0)
-    matrix.drawPixel(hours_start_col + 0, 2, Adafruit_NeoMatrix::Color(120, 0, 0));
-    matrix.drawPixel(hours_start_col + 0, 3, Adafruit_NeoMatrix::Color(120, 0, 0));
-    // Last dot (23)
-    matrix.drawPixel(hours_start_col + 23, 2, Adafruit_NeoMatrix::Color(120, 0, 0));
-    matrix.drawPixel(hours_start_col + 23, 3, Adafruit_NeoMatrix::Color(120, 0, 0));
-    // Current dot
-    matrix.drawPixel(hours_start_col + hours, 2, Adafruit_NeoMatrix::Color(200, 0, 0));
-    matrix.drawPixel(hours_start_col + hours, 3, Adafruit_NeoMatrix::Color(200, 0, 0));
+    // Extract RGB components from config colors
+    uint8_t h_r = (clock_config.hours_color >> 16) & 0xFF;
+    uint8_t h_g = (clock_config.hours_color >> 8) & 0xFF;
+    uint8_t h_b = clock_config.hours_color & 0xFF;
 
-    // Minutes bar: 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
-    const uint8_t minutes_start_col = 1;
-    // First dot (0)
-    matrix.drawPixel(minutes_start_col + 0, 10, Adafruit_NeoMatrix::Color(0, 120, 0));
-    // Last dot (59)
-    uint8_t min_last_col = minutes_start_col + (59 % 30);
-    uint8_t min_last_row = 10 + (59 / 30);
-    matrix.drawPixel(min_last_col, min_last_row, Adafruit_NeoMatrix::Color(0, 120, 0));
-    // Current dot
-    uint8_t min_cur_col = minutes_start_col + (minutes % 30);
-    uint8_t min_cur_row = 10 + (minutes / 30);
-    matrix.drawPixel(min_cur_col, min_cur_row, Adafruit_NeoMatrix::Color(0, 200, 0));
+    uint8_t m_r = (clock_config.minutes_color >> 16) & 0xFF;
+    uint8_t m_g = (clock_config.minutes_color >> 8) & 0xFF;
+    uint8_t m_b = clock_config.minutes_color & 0xFF;
 
-    // Seconds bar: 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
-    const uint8_t seconds_start_col = 1;
-    // First dot (0)
-    matrix.drawPixel(seconds_start_col + 0, 18, Adafruit_NeoMatrix::Color(0, 0, 120));
-    // Last dot (59)
-    uint8_t sec_last_col = seconds_start_col + (59 % 30);
-    uint8_t sec_last_row = 18 + (59 / 30);
-    matrix.drawPixel(sec_last_col, sec_last_row, Adafruit_NeoMatrix::Color(0, 0, 120));
-    // Current dot
-    uint8_t sec_cur_col = seconds_start_col + (seconds % 30);
-    uint8_t sec_cur_row = 18 + (seconds / 30);
-    matrix.drawPixel(sec_cur_col, sec_cur_row, Adafruit_NeoMatrix::Color(0, 0, 200));
+    uint8_t s_r = (clock_config.seconds_color >> 16) & 0xFF;
+    uint8_t s_g = (clock_config.seconds_color >> 8) & 0xFF;
+    uint8_t s_b = clock_config.seconds_color & 0xFF;
 
-#elif defined(CLOCK_MODE_PROGRESS_BAR)
-    // Progress bar mode: 3 horizontal bars for hours, minutes, seconds
-    // Hours bar: rows 2-3 (0-23 hours using 24 of 32 columns)
-    // Minutes bar: rows 10-11 (0-59 minutes using 60 of 64 dots across 2 rows)
-    // Seconds bar: rows 18-19 (0-59 seconds using 60 of 64 dots across 2 rows)
+    if (clock_config.mode == ClockMode::INDICATOR) {
+        // Indicator mode: show first, last, and current position dots only
+        const uint8_t hours_start_col = 4;
+        const uint8_t minutes_start_col = 1;
+        const uint8_t seconds_start_col = 1;
 
-    const uint8_t hours = ntp.hours();     // 0-23
-    const uint8_t minutes = ntp.minutes(); // 0-59
-    const uint8_t seconds = ntp.seconds(); // 0-59
+        // Hours bar (rows 2-3): First, last, current
+        matrix.drawPixel(hours_start_col + 0, 2, Adafruit_NeoMatrix::Color(h_r * 120 / 255, h_g * 120 / 255, h_b * 120 / 255));
+        matrix.drawPixel(hours_start_col + 0, 3, Adafruit_NeoMatrix::Color(h_r * 120 / 255, h_g * 120 / 255, h_b * 120 / 255));
+        matrix.drawPixel(hours_start_col + 23, 2, Adafruit_NeoMatrix::Color(h_r * 120 / 255, h_g * 120 / 255, h_b * 120 / 255));
+        matrix.drawPixel(hours_start_col + 23, 3, Adafruit_NeoMatrix::Color(h_r * 120 / 255, h_g * 120 / 255, h_b * 120 / 255));
+        matrix.drawPixel(hours_start_col + hours, 2, Adafruit_NeoMatrix::Color(h_r * 200 / 255, h_g * 200 / 255, h_b * 200 / 255));
+        matrix.drawPixel(hours_start_col + hours, 3, Adafruit_NeoMatrix::Color(h_r * 200 / 255, h_g * 200 / 255, h_b * 200 / 255));
 
-    // Hours bar: use 24 dots (centered: columns 4-27)
-    const uint8_t hours_start_col = 4;
-    for (uint8_t i = 0; i < 24; i++) {
-        uint32_t color = (i <= hours) ? Adafruit_NeoMatrix::Color(120, 0, 0) : Adafruit_NeoMatrix::Color(10, 0, 0);
-        matrix.drawPixel(hours_start_col + i, 2, color);
-        matrix.drawPixel(hours_start_col + i, 3, color);
-    }
+        // Minutes bar (rows 10-11): First, last, current
+        matrix.drawPixel(minutes_start_col + 0, 10, Adafruit_NeoMatrix::Color(m_r * 120 / 255, m_g * 120 / 255, m_b * 120 / 255));
+        uint8_t min_last_col = minutes_start_col + (59 % 30);
+        uint8_t min_last_row = 10 + (59 / 30);
+        matrix.drawPixel(min_last_col, min_last_row, Adafruit_NeoMatrix::Color(m_r * 120 / 255, m_g * 120 / 255, m_b * 120 / 255));
+        uint8_t min_cur_col = minutes_start_col + (minutes % 30);
+        uint8_t min_cur_row = 10 + (minutes / 30);
+        matrix.drawPixel(min_cur_col, min_cur_row, Adafruit_NeoMatrix::Color(m_r * 200 / 255, m_g * 200 / 255, m_b * 200 / 255));
 
-    // Minutes bar: use 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
-    const uint8_t minutes_start_col = 1;
-    for (uint8_t i = 0; i < 60; i++) {
-        uint8_t col = minutes_start_col + (i % 30);
-        uint8_t row = 10 + (i / 30);
-        uint32_t color = (i <= minutes) ? Adafruit_NeoMatrix::Color(0, 100, 0) : Adafruit_NeoMatrix::Color(0, 10, 0);
-        matrix.drawPixel(col, row, color);
-    }
+        // Seconds bar (rows 18-19): First, last, current
+        matrix.drawPixel(seconds_start_col + 0, 18, Adafruit_NeoMatrix::Color(s_r * 120 / 255, s_g * 120 / 255, s_b * 120 / 255));
+        uint8_t sec_last_col = seconds_start_col + (59 % 30);
+        uint8_t sec_last_row = 18 + (59 / 30);
+        matrix.drawPixel(sec_last_col, sec_last_row, Adafruit_NeoMatrix::Color(s_r * 120 / 255, s_g * 120 / 255, s_b * 120 / 255));
+        uint8_t sec_cur_col = seconds_start_col + (seconds % 30);
+        uint8_t sec_cur_row = 18 + (seconds / 30);
+        matrix.drawPixel(sec_cur_col, sec_cur_row, Adafruit_NeoMatrix::Color(s_r * 200 / 255, s_g * 200 / 255, s_b * 200 / 255));
 
-    // Seconds bar: use 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
-    const uint8_t seconds_start_col = 1;
-    for (uint8_t i = 0; i < 60; i++) {
-        uint8_t col = seconds_start_col + (i % 30);
-        uint8_t row = 18 + (i / 30);
-        uint32_t color = (i <= seconds) ? Adafruit_NeoMatrix::Color(0, 0, 200) : Adafruit_NeoMatrix::Color(0, 0, 10);
-        matrix.drawPixel(col, row, color);
-    }
+    } else if (clock_config.mode == ClockMode::PROGRESS_BAR) {
+        // Progress bar mode: filled bars
+        const uint8_t hours_start_col = 4;
+        const uint8_t minutes_start_col = 1;
+        const uint8_t seconds_start_col = 1;
 
-#else
-    // Text mode: scrolling digital clock display
-    static uint8_t h_pos_x = 0;
-    static uint8_t m_pos_x = 4;
-    static uint8_t s_pos_x = 8;
-    static uint8_t cnt = 0;
+        // Hours bar (rows 2-3)
+        for (uint8_t i = 0; i < 24; i++) {
+            uint8_t brightness = (i <= hours) ? 120 : 10;
+            uint32_t color = Adafruit_NeoMatrix::Color(h_r * brightness / 255, h_g * brightness / 255, h_b * brightness / 255);
+            matrix.drawPixel(hours_start_col + i, 2, color);
+            matrix.drawPixel(hours_start_col + i, 3, color);
+        }
 
-    matrix.setTextWrap(false);
+        // Minutes bar (rows 10-11)
+        for (uint8_t i = 0; i < 60; i++) {
+            uint8_t col = minutes_start_col + (i % 30);
+            uint8_t row = 10 + (i / 30);
+            uint8_t brightness = (i <= minutes) ? 100 : 10;
+            uint32_t color = Adafruit_NeoMatrix::Color(m_r * brightness / 255, m_g * brightness / 255, m_b * brightness / 255);
+            matrix.drawPixel(col, row, color);
+        }
 
-    matrix.setCursor(h_pos_x, 0);
-    matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
-    matrix.printf("%.2u", ntp.hours());
+        // Seconds bar (rows 18-19)
+        for (uint8_t i = 0; i < 60; i++) {
+            uint8_t col = seconds_start_col + (i % 30);
+            uint8_t row = 18 + (i / 30);
+            uint8_t brightness = (i <= seconds) ? 200 : 10;
+            uint32_t color = Adafruit_NeoMatrix::Color(s_r * brightness / 255, s_g * brightness / 255, s_b * brightness / 255);
+            matrix.drawPixel(col, row, color);
+        }
 
-    matrix.setCursor(m_pos_x, 7);
-    matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 100, 0));
-    matrix.printf("%.2u", ntp.minutes());
+    } else {
+        // Text mode: scrolling digital clock display
+        static uint8_t h_pos_x = 0;
+        static uint8_t m_pos_x = 4;
+        static uint8_t s_pos_x = 8;
+        static uint8_t cnt = 0;
 
-    cnt = ntp.seconds();
-    matrix.setCursor(s_pos_x, 14);
-    matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
-    matrix.printf("%.2u", cnt);
+        matrix.setTextWrap(false);
 
-    AsyncTasker::schedule(100, [this](uint64_t tt, uint64_t &dd, bool &rep) {
+        matrix.setCursor(h_pos_x, 0);
+        matrix.setTextColor(Adafruit_NeoMatrix::Color(h_r * 120 / 255, h_g * 120 / 255, h_b * 120 / 255));
+        matrix.printf("%.2u", hours);
+
+        matrix.setCursor(m_pos_x, 7);
+        matrix.setTextColor(Adafruit_NeoMatrix::Color(m_r * 100 / 255, m_g * 100 / 255, m_b * 100 / 255));
+        matrix.printf("%.2u", minutes);
+
+        cnt = seconds;
         matrix.setCursor(s_pos_x, 14);
-        matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
-        matrix.printf("%.2u ", cnt);
-        matrix.show();
-        (++s_pos_x) > (N_COLS - 11) ? (s_pos_x = 0) : s_pos_x;
-    });
+        matrix.setTextColor(Adafruit_NeoMatrix::Color(s_r * 200 / 255, s_g * 200 / 255, s_b * 200 / 255));
+        matrix.printf("%.2u", cnt);
 
-    (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
-    (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
-#endif
+        AsyncTasker::schedule(100, [this, s_r, s_g, s_b](uint64_t tt, uint64_t &dd, bool &rep) {
+            matrix.setCursor(s_pos_x, 14);
+            matrix.setTextColor(Adafruit_NeoMatrix::Color(s_r * 120 / 255, s_g * 120 / 255, s_b * 120 / 255));
+            matrix.printf("%.2u ", cnt);
+            matrix.show();
+            (++s_pos_x) > (N_COLS - 11) ? (s_pos_x = 0) : s_pos_x;
+        });
+
+        (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
+        (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
+    }
 
     matrix.show();
 }
