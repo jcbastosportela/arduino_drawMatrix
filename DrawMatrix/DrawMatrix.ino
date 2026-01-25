@@ -45,7 +45,7 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
-#include <NTPClient.h>
+#include <NTP.h>
 #include <OneButton.h>
 #include <WiFiClient.h>
 #include <WiFiUdp.h>
@@ -69,11 +69,15 @@ constexpr uint64_t SERVER_CHECK_INTERVAL = 5000; // milliseconds
 constexpr size_t MAX_NUM_TRIES_NO_CLIENT = 3;    // how many tries before giving up
 constexpr size_t NTP_SYNC_PERIOD_MS = 60 * 1000; // milliseconds
 
+// CET/CEST timezone configuration (user selected)
+constexpr int8_t TZ_STD_OFFSET_MINUTES = 60;  // UTC+1 in minutes
+constexpr int8_t TZ_DST_OFFSET_MINUTES = 120; // UTC+2 in minutes
+
 const char *const ssid = STASSID;
 const char *const password = STAPSK;
 AsyncWebServer server(80);
 WiFiUDP ntp_udp;
-NTPClient ntpClient(ntp_udp, "pool.ntp.org", 2 * 60 * 60, NTP_SYNC_PERIOD_MS);
+NTP ntp(ntp_udp);
 std::unique_ptr<ServerSys::App> app;
 
 // Global client activity tracking
@@ -94,6 +98,14 @@ std::map<uint8_t, OneButton> buttons = {
     {BUTTON_PLAY_PAUSE, OneButton(BUTTON_PLAY_PAUSE)},
     {BUTTON_CTRL, OneButton(BUTTON_CTRL)},
 };
+
+void configureNtp() {
+    ntp.ruleDST("CEST", Last, Sun, Mar, 2, TZ_DST_OFFSET_MINUTES);
+    ntp.ruleSTD("CET", Last, Sun, Oct, 3, TZ_STD_OFFSET_MINUTES);
+    ntp.updateInterval(NTP_SYNC_PERIOD_MS);
+    ntp.begin("pool.ntp.org");
+    ntp.update();
+}
 
 // ======================================================================================
 void setup(void) {
@@ -134,7 +146,7 @@ void setup(void) {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
-    app = std::make_unique<ServerSys::App>(ntpClient, []() {
+    app = std::make_unique<ServerSys::App>(ntp, []() {
         LOG_INFO("ALARM", "Alarm callback triggered!");
         MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
         MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME); // Set volume to maximum
@@ -566,14 +578,18 @@ void setup(void) {
         },
         true);
 
-    ntpClient.begin();
+    configureNtp();
     AsyncTasker::schedule(
         WIFI_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
+            LOG_DEBUG("WIFI", "Performing WiFi and NTP health check...");
             static size_t fail_sync_count = 0;
             static bool reconnecting = false;
             static unsigned long reconnect_start = 0;
+            static unsigned long last_ntp_poll = 0;
             constexpr unsigned long RECONNECT_TIMEOUT = 30000; // 30 seconds timeout
+
+            const unsigned long now = millis();
 
             // If currently reconnecting, check status
             if (reconnecting) {
@@ -581,8 +597,9 @@ void setup(void) {
                     LOG_INFO("WIFI", "WiFi reconnected successfully!");
                     reconnecting = false;
                     fail_sync_count = 0;
+                    last_ntp_poll = 0; // Force an immediate NTP resync on next pass
                     return;
-                } else if (millis() - reconnect_start > RECONNECT_TIMEOUT) {
+                } else if (now - reconnect_start > RECONNECT_TIMEOUT) {
                     LOG_WARNING("WIFI", "WiFi reconnection timeout. Retrying...");
                     WiFi.disconnect();
                     WiFi.begin(ssid, password);
@@ -591,18 +608,27 @@ void setup(void) {
                 return; // Exit early while reconnecting
             }
 
-            // Normal NTP sync check
-            if (!ntpClient.update()) {
+            bool attempted_ntp_sync = false;
+            bool ntp_sync_ok = true;
+
+            if (last_ntp_poll == 0 || (now - last_ntp_poll) >= NTP_SYNC_PERIOD_MS) {
+                last_ntp_poll = now;
+                attempted_ntp_sync = true;
+                ntp_sync_ok = ntp.update();
+            }
+
+            if (attempted_ntp_sync && !ntp_sync_ok) {
                 if ((WiFi.status() != WL_CONNECTED) ||
                     (++fail_sync_count > ((NTP_SYNC_PERIOD_MS / WIFI_CHECK_INTERVAL) + 1))) {
                     LOG_WARNING("NTP", "NTP sync failed. WiFi status: %d. Re-connecting...", WiFi.status());
                     fail_sync_count = 0;
                     reconnecting = true;
                     reconnect_start = millis();
+                    last_ntp_poll = 0;
                     WiFi.disconnect();
                     WiFi.begin(ssid, password);
                 }
-            } else {
+            } else if (ntp_sync_ok) {
                 fail_sync_count = 0;
             }
         },

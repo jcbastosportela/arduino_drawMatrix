@@ -56,9 +56,9 @@ bool collectBodyData(uint8_t *data, size_t len, size_t index, size_t total, Stri
 
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
-App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
-    : m_status_led_state(true), task_draw_matrix(), task_heart_beat_blink(m_status_led_state),
-      m_ntp(ntp), m_alarm_callback(alarm_callback) {
+App::App(NTP &ntp, std::function<void()> alarm_callback)
+        : m_ntp(ntp), m_status_led_state(true), task_heart_beat_blink(m_status_led_state), task_draw_matrix(),
+            m_clock_mode(false), m_alarm_callback(alarm_callback) {
 
     if (!LittleFS.begin()) {
         Serial.println("Failed to mount LittleFS");
@@ -117,13 +117,13 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
 
             task_draw_matrix.matrix.setCursor(h_pos_x, 0);
             task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
-            task_draw_matrix.matrix.printf("%.2u", m_ntp.getHours());
+            task_draw_matrix.matrix.printf("%.2u", m_ntp.hours());
 
             task_draw_matrix.matrix.setCursor(m_pos_x, 7);
-            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 120, 0));
-            task_draw_matrix.matrix.printf("%.2u", m_ntp.getMinutes());
+            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 100, 0));
+            task_draw_matrix.matrix.printf("%.2u", m_ntp.minutes());
 
-            cnt = m_ntp.getSeconds();
+            cnt = m_ntp.seconds();
             task_draw_matrix.matrix.setCursor(s_pos_x, 14);
             task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
             task_draw_matrix.matrix.printf("%.2u", cnt);
@@ -162,8 +162,8 @@ App::App(const NTPClient &ntp, std::function<void()> alarm_callback)
         true);
     // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
     AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
-        String current_time = m_ntp.getFormattedTime().substring(0, 5);
-        int current_day = m_ntp.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        String current_time = String(m_ntp.formattedTime("%H:%M:%S")).substring(0, 5);
+        int current_day = m_ntp.weekDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
         LOG_DEBUG("ALARM", "Checking alarms at NTP time: %s (day: %d)", current_time.c_str(), current_day);
 

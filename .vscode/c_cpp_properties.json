@@ -5,6 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/libraries/NTPClient/",
+                "${workspaceFolder}/libraries/NTP/",
                 "${workspaceFolder}/libraries/Adafruit_BusIO/",
                 "${workspaceFolder}/libraries/Adafruit_GFX_Library/",
                 "${workspaceFolder}/libraries/Adafruit_NeoMatrix/",

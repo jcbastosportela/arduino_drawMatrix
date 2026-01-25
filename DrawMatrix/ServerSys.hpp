@@ -15,7 +15,7 @@
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoJson.h>
-#include <NTPClient.h>
+#include <NTP.h>
 
 #include <list>
 #include <cstdint>
@@ -129,7 +129,7 @@ class App : public IMatrixApp {
      * @param ntp Reference to the NTP client.
      * @param alarm_callback Callback function for alarm events.
      */
-    App(const NTPClient &ntp, std::function<void()> alarm_callback);
+    App(NTP &ntp, std::function<void()> alarm_callback);
 
     /**
      * @brief Destructor.
@@ -271,10 +271,10 @@ class App : public IMatrixApp {
         }
     };
 
-    const NTPClient &m_ntp;
+    NTP &m_ntp;
+    bool m_status_led_state;
     HeartBeatBlink task_heart_beat_blink;
     DrawMatrix task_draw_matrix;
-    bool m_status_led_state;
     bool m_clock_mode;
     std::list<AlarmConfig> m_alarms;
     std::function<void()> m_alarm_callback;
