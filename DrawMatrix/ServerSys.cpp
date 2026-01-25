@@ -888,14 +888,52 @@ void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp
     }
 
     matrix.setBrightness(MIN_BRIGHTNESS);
+    matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
 
+#ifdef CLOCK_MODE_PROGRESS_BAR
+    // Progress bar mode: 3 horizontal bars for hours, minutes, seconds
+    // Hours bar: rows 2-3 (0-23 hours using 24 of 32 columns)
+    // Minutes bar: rows 10-11 (0-59 minutes using 60 of 64 dots across 2 rows)
+    // Seconds bar: rows 18-19 (0-59 seconds using 60 of 64 dots across 2 rows)
+
+    const uint8_t hours = ntp.hours();     // 0-23
+    const uint8_t minutes = ntp.minutes(); // 0-59
+    const uint8_t seconds = ntp.seconds(); // 0-59
+
+    // Hours bar: use 24 dots (centered: columns 4-27)
+    const uint8_t hours_start_col = 4;
+    for (uint8_t i = 0; i < 24; i++) {
+        uint32_t color = (i <= hours) ? Adafruit_NeoMatrix::Color(120, 0, 0) : Adafruit_NeoMatrix::Color(10, 0, 0);
+        matrix.drawPixel(hours_start_col + i, 2, color);
+        matrix.drawPixel(hours_start_col + i, 3, color);
+    }
+
+    // Minutes bar: use 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
+    const uint8_t minutes_start_col = 1;
+    for (uint8_t i = 0; i < 60; i++) {
+        uint8_t col = minutes_start_col + (i % 30);
+        uint8_t row = 10 + (i / 30);
+        uint32_t color = (i <= minutes) ? Adafruit_NeoMatrix::Color(0, 100, 0) : Adafruit_NeoMatrix::Color(0, 10, 0);
+        matrix.drawPixel(col, row, color);
+    }
+
+    // Seconds bar: use 60 dots across 2 rows (2 rows × 30 columns = 60 dots, centered: columns 1-30)
+    const uint8_t seconds_start_col = 1;
+    for (uint8_t i = 0; i < 60; i++) {
+        uint8_t col = seconds_start_col + (i % 30);
+        uint8_t row = 18 + (i / 30);
+        uint32_t color = (i <= seconds) ? Adafruit_NeoMatrix::Color(0, 0, 200) : Adafruit_NeoMatrix::Color(0, 0, 10);
+        matrix.drawPixel(col, row, color);
+    }
+
+#else
+    // Text mode: scrolling digital clock display
     static uint8_t h_pos_x = 0;
     static uint8_t m_pos_x = 4;
     static uint8_t s_pos_x = 8;
     static uint8_t cnt = 0;
 
     matrix.setTextWrap(false);
-    matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
 
     matrix.setCursor(h_pos_x, 0);
     matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
@@ -920,6 +958,7 @@ void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp
 
     (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
     (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
+#endif
 
     matrix.show();
 }
