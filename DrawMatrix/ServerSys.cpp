@@ -14,6 +14,7 @@
 #include <Adafruit_GFX.h>
 #include "Arduino.h"
 #include <LittleFS.h>
+#include <functional>
 
 #include "Logger.hpp"
 #include "ALARM_HTML.hpp"
@@ -57,7 +58,7 @@ bool collectBodyData(uint8_t *data, size_t len, size_t index, size_t total, Stri
 namespace ServerSys {
 // --------------------------------------------------------------------------------------
 App::App(NTP &ntp, std::function<void()> alarm_callback)
-        : m_ntp(ntp), m_status_led_state(true), task_heart_beat_blink(m_status_led_state), task_draw_matrix(),
+        : m_ntp(ntp), m_status_led_state(true), m_task_heart_beat_blink(m_status_led_state), m_task_draw_matrix(),
             m_clock_mode(false), m_alarm_callback(alarm_callback) {
 
     if (!LittleFS.begin()) {
@@ -99,68 +100,18 @@ App::App(NTP &ntp, std::function<void()> alarm_callback)
         }
     }
 
-    // AsyncTasker::schedule(1000, std::bind(&HeartBeatBlink::execute, &task_heart_beat_blink, _1, _2, _3), true);
+    // Schedule the clock matrix drawing task via bind to DrawMatrix method
     AsyncTasker::schedule(
         1000,
-        [this](uint64_t t, uint64_t &d, bool &repeat) {
-            if (!m_clock_mode)
-                return;
-
-            task_draw_matrix.matrix.setBrightness(MIN_BRIGHTNESS); // Set brightness to 6 (0-255)
-
-            static uint8_t h_pos_x = 0;
-            static uint8_t m_pos_x = 4;
-            static uint8_t s_pos_x = 8;
-            static uint8_t cnt = 0;
-            task_draw_matrix.matrix.setTextWrap(false);
-            task_draw_matrix.matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
-
-            task_draw_matrix.matrix.setCursor(h_pos_x, 0);
-            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
-            task_draw_matrix.matrix.printf("%.2u", m_ntp.hours());
-
-            task_draw_matrix.matrix.setCursor(m_pos_x, 7);
-            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 100, 0));
-            task_draw_matrix.matrix.printf("%.2u", m_ntp.minutes());
-
-            cnt = m_ntp.seconds();
-            task_draw_matrix.matrix.setCursor(s_pos_x, 14);
-            task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
-            task_draw_matrix.matrix.printf("%.2u", cnt);
-            AsyncTasker::schedule(100, [&](uint64_t t, uint64_t &d, bool &repeat) {
-                task_draw_matrix.matrix.setCursor(s_pos_x, 14);
-                task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
-                task_draw_matrix.matrix.printf("%.2u ", cnt);
-                task_draw_matrix.matrix.show();
-                (++s_pos_x) > (N_COLS - 11) ? (s_pos_x = 0) : s_pos_x;
-            });
-
-            (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
-            (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
-
-            // task_draw_matrix.matrix.setCursor(0, 0);
-            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
-            // task_draw_matrix.matrix.printf("%.2u", m_ntp.getHours());
-
-            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 120, 0));
-            // task_draw_matrix.matrix.printf("%.2u", m_ntp.getMinutes());
-
-            // cnt = m_ntp.getSeconds();
-            // s_pos_x = task_draw_matrix.matrix.getCursorX();
-            // task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
-            // task_draw_matrix.matrix.printf("%.2u", cnt);
-            // AsyncTasker::schedule(100, [&](uint64_t t, uint64_t &d, bool &repeat) {
-            //     task_draw_matrix.matrix.setCursor(s_pos_x, 0);
-            //     task_draw_matrix.matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
-            //     task_draw_matrix.matrix.printf("%.2u ", cnt);
-            //     task_draw_matrix.matrix.show();
-            // });
-
-            task_draw_matrix.matrix.show();
-            // Serial.printf("NTP time: %s\n", m_ntp.getFormattedTime().c_str());
-        },
+        std::bind(&ServerSys::DrawMatrix::draw_clock_task,
+                  &m_task_draw_matrix,
+                  std::placeholders::_1,
+                  std::placeholders::_2,
+                  std::placeholders::_3,
+                  std::ref(m_ntp),
+                  std::cref(m_clock_mode)),
         true);
-    // AsyncTasker::schedule(1, std::bind(&DrawMatrix::execute, &task_draw_matrix, _1, _2, _3), true);
+
     AsyncTasker::schedule(10000, [this](uint64_t t, uint64_t &d, bool &repeat) {
         String current_time = String(m_ntp.formattedTime("%H:%M:%S")).substring(0, 5);
         int current_day = m_ntp.weekDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -432,7 +383,7 @@ void App::handle_set_display_brightness(AsyncWebServerRequest *request) {
         return; // If JSON parsing fails, send an error response
     }
     uint8_t brightness = static_cast<uint8_t>(request->getParam("value")->value().toInt());
-    task_draw_matrix.set_brightness(brightness);
+    m_task_draw_matrix.set_brightness(brightness);
     request->send(200, "text/plain", "Brightness set to " + String(brightness));
 }
 
@@ -463,7 +414,7 @@ void App::handle_set_display_color(AsyncWebServerRequest *request) {
         return; // If JSON parsing fails, send an error response
     }
 
-    task_draw_matrix.set_color(color);
+    m_task_draw_matrix.set_color(color);
     // Create a single-color GIF (16x16, color table with only one color)
     constexpr size_t GIF_WIDTH = 160;
     constexpr size_t GIF_HEIGHT = 160;
@@ -558,7 +509,7 @@ void App::handle_set_display_matrix(AsyncWebServerRequest *request, uint8_t *dat
     }
 
     // Serial.println(doc.as<String>().c_str());  // Print the received matrix for debugging
-    task_draw_matrix.set_matrix(doc);
+    m_task_draw_matrix.set_matrix(doc);
     request->send(200, "text/plain", "Matrix updated successfully");
 }
 
@@ -927,6 +878,49 @@ void DrawMatrix::set_matrix(const JsonDocument &matrix_disp) {
             matrix.setPixelColor(pixel_index(col, row), rgb);
         }
     }
+    matrix.show();
+}
+
+// --------------------------------------------------------------------------------------
+void DrawMatrix::draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode) {
+    if (!clock_mode) {
+        return;
+    }
+
+    matrix.setBrightness(MIN_BRIGHTNESS);
+
+    static uint8_t h_pos_x = 0;
+    static uint8_t m_pos_x = 4;
+    static uint8_t s_pos_x = 8;
+    static uint8_t cnt = 0;
+
+    matrix.setTextWrap(false);
+    matrix.fillScreen(Adafruit_NeoMatrix::Color(0, 0, 0));
+
+    matrix.setCursor(h_pos_x, 0);
+    matrix.setTextColor(Adafruit_NeoMatrix::Color(120, 0, 0));
+    matrix.printf("%.2u", ntp.hours());
+
+    matrix.setCursor(m_pos_x, 7);
+    matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 100, 0));
+    matrix.printf("%.2u", ntp.minutes());
+
+    cnt = ntp.seconds();
+    matrix.setCursor(s_pos_x, 14);
+    matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 200));
+    matrix.printf("%.2u", cnt);
+
+    AsyncTasker::schedule(100, [this](uint64_t tt, uint64_t &dd, bool &rep) {
+        matrix.setCursor(s_pos_x, 14);
+        matrix.setTextColor(Adafruit_NeoMatrix::Color(0, 0, 120));
+        matrix.printf("%.2u ", cnt);
+        matrix.show();
+        (++s_pos_x) > (N_COLS - 11) ? (s_pos_x = 0) : s_pos_x;
+    });
+
+    (++h_pos_x) > (N_COLS - 11) ? (h_pos_x = 0) : h_pos_x;
+    (++m_pos_x) > (N_COLS - 11) ? (m_pos_x = 0) : m_pos_x;
+
     matrix.show();
 }
 

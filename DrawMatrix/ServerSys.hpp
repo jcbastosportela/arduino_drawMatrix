@@ -113,6 +113,20 @@ struct DrawMatrix : public ITask {
      */
     void set_matrix(const JsonDocument &matrix_disp);
 
+    /**
+     * @brief Draw the clock frame on the matrix.
+     *
+     * Schedules a small sub-task to animate seconds horizontally. Honors
+     * clock mode enable flag; when disabled, it returns immediately.
+     *
+     * @param t Current time (ms)
+     * @param d Delay until next execution (out)
+     * @param repeat Repeat flag (out)
+     * @param ntp NTP client providing hours/minutes/seconds
+     * @param clock_mode Whether clock mode is enabled
+     */
+    void draw_clock_task(uint64_t t, uint64_t &d, bool &repeat, NTP &ntp, const bool &clock_mode);
+
     Adafruit_NeoMatrix matrix;
     uint8_t hue;
     uint32_t color;
@@ -273,8 +287,8 @@ class App : public IMatrixApp {
 
     NTP &m_ntp;
     bool m_status_led_state;
-    HeartBeatBlink task_heart_beat_blink;
-    DrawMatrix task_draw_matrix;
+    HeartBeatBlink m_task_heart_beat_blink;
+    DrawMatrix m_task_draw_matrix;
     bool m_clock_mode;
     std::list<AlarmConfig> m_alarms;
     std::function<void()> m_alarm_callback;
