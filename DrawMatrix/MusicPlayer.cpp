@@ -128,6 +128,7 @@ std::map<MusicTrack, std::function<void()>> trackActions = {
 
 // --------------------------------------------------------------------------------------
 void init() {
+    LOG_INFO("MUSIC", "[MusicPlayer] Initializing DFPlayer Mini");
     mySoftwareSerial.begin(9600); // DFPlayer
     myDFPlayer.begin();
     myDFPlayer.reset(); // waits for online notification

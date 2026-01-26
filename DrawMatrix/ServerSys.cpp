@@ -63,16 +63,16 @@ App::App(NTP &ntp, std::function<void()> alarm_callback)
             m_clock_mode(false), m_alarm_callback(alarm_callback) {
 
     if (!LittleFS.begin()) {
-        Serial.println("Failed to mount LittleFS");
+        LOG_ERROR("FS", "Failed to mount LittleFS");
     }
     else {
-        Serial.println("LittleFS mounted successfully");
+        LOG_INFO("FS", "LittleFS mounted successfully");
         if (LittleFS.exists("/alarms.bin")) {
             File alarmFile = LittleFS.open("/alarms.bin", "r");
             if (alarmFile) {
-                LOG_INFO("ALARM", "Reading alarms from /alarms.bin");
-                while (alarms_file.available()) {
-                    String line = alarms_file.readStringUntil('\n');
+                LOG_INFO("FS", "Reading alarms from /alarms.bin");
+                while (alarmFile.available()) {
+                    String line = alarmFile.readStringUntil('\n');
                     line.trim();
                     if (!line.isEmpty()) {
                         // Try to parse new format (time,days)

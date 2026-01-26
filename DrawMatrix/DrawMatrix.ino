@@ -164,6 +164,7 @@ void setup(void) {
         LOG_INFO("MDNS", "MDNS responder started");
     }
     MusicPlayer::init();
+    LOG_INFO("MUSIC", "Music player initialized");
 
     server.on("/", [](AsyncWebServerRequest *request) {
         updateClientActivity();
@@ -651,6 +652,7 @@ void setup(void) {
 void loop(void) {
     MDNS.update();
     app->run();
+    // LOG_DEBUG("MAIN", "Main loop running...");
     MusicPlayer::run();
     for (auto &[_, button] : buttons) {
         button.tick();
