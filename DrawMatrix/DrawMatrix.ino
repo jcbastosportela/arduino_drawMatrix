@@ -9,13 +9,42 @@
  *            MIT License                                                                                              *
  * ------------------------------------------------------------------------------------------------------------------- *
  */
+
+/*
+ * MEMORY CONFIGURATION NOTES:
+ *
+ * Arduino IDE Settings Required:
+ * - Tools → Board: "NodeMCU 1.0 (ESP-12E Module)" or equivalent
+ * - Tools → MMU: "16KB cache + 48KB IRAM" (CRITICAL for IRAM usage)
+ * - Tools → CPU Frequency: "160MHz"
+ * - Tools → Flash Size: "4MB (FS:2MB OTA:~1019KB)"
+ * - Tools → Debug Level: "None"
+ *
+ * These settings are NOT stored in workspace - must be set in Arduino IDE!
+ */
 #include <map>
 #include <memory>
 
+// Memory optimization defines - MUST be before library includes
+#define ASYNC_TCP_SSL_ENABLED 0
+#define ASYNCWEBSERVER_REGEX 0
+#define WS_MAX_QUEUED_MESSAGES 4
+#define DEFAULT_MAX_WS_CLIENTS 2
+
+// LWIP Low Memory Configuration - reduces TCP/IP stack IRAM usage
+// Note: Keep IGMP enabled for mDNS compatibility
+#define LWIP_IPV6 0
+#define TCP_MSS 536
+#define TCP_SND_BUF (2 * TCP_MSS)
+#define TCP_WND (2 * TCP_MSS)
+#define LWIP_TCP_KEEPALIVE 0
+
 #include <ArduinoJson.h>
-#include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ElegantOTA.h>
 #include <NTPClient.h>
 #include <OneButton.h>
 #include <WiFiClient.h>
@@ -50,9 +79,7 @@ std::unique_ptr<ServerSys::App> app;
 volatile unsigned long g_lastClientActivity = 0;
 volatile unsigned long g_lastDisplayActivity = 0;
 
-void updateClientActivity() {
-    g_lastClientActivity = millis();
-}
+void updateClientActivity() { g_lastClientActivity = millis(); }
 
 void updateDisplayActivity() {
     g_lastDisplayActivity = millis();
@@ -70,11 +97,10 @@ std::map<uint8_t, OneButton> buttons = {
 // ======================================================================================
 void setup(void) {
     Serial.begin(115200);
-    MusicPlayer::init();
 
     // Configure buttons
     buttons[BUTTON_PLAY_PAUSE].attachClick([]() {
-        if(MusicPlayer::get_state() == MusicPlayer::State::STOPPED) {
+        if (MusicPlayer::get_state() == MusicPlayer::State::STOPPED) {
             Serial.println("No track loaded, playing default track (MUSIC_NATURE)");
             MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_NATURE);
             return;
@@ -86,7 +112,7 @@ void setup(void) {
         Serial.println("Play/Pause button long pressed");
         MusicPlayer::stop();
     });
-    buttons[BUTTON_PLAY_PAUSE].attachDoubleClick([](){
+    buttons[BUTTON_PLAY_PAUSE].attachDoubleClick([]() {
         Serial.println("Play/Pause button double clicked");
         MusicPlayer::next();
     });
@@ -107,13 +133,13 @@ void setup(void) {
     app = std::make_unique<ServerSys::App>(ntpClient, []() {
         Serial.println("Alarm callback triggered!");
         MusicPlayer::play(MusicPlayer::MusicTrack::MUSIC_ALARM);
-        MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME);  // Set volume to maximum
+        MusicPlayer::set_volume(MusicPlayer::MAX_VOLUME); // Set volume to maximum
     });
 
     // Wait for connection
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        Serial.print(".");
+        Serial.print("*");
     }
     Serial.println("");
     Serial.print("Connected to ");
@@ -124,65 +150,111 @@ void setup(void) {
     if (MDNS.begin("esp8266")) {
         Serial.println("MDNS responder started");
     }
+    MusicPlayer::init();
 
-    server.on("/", [](AsyncWebServerRequest *request){
+    server.on("/", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_root(request);
     });
-    server.on("/draw", [](AsyncWebServerRequest *request){
+    server.on("/draw", [](AsyncWebServerRequest *request) {
         updateDisplayActivity(); // Display-related - disable clock
         app->handle_draw(request);
     });
-    server.on("/alarm", [](AsyncWebServerRequest *request){
+    server.on("/alarm", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_alarm(request);
     });
-    server.on("/music", [](AsyncWebServerRequest *request){
+    server.on("/music", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_music(request);
     });
 
-    server.on("/status_led_control", [](AsyncWebServerRequest *request){
+    // Returns JSON with music subsystem info (folders, tracks, current track, volume, online)
+    server.on("/music_info", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        StaticJsonDocument<768> doc;
+
+        MusicPlayer::run();
+
+        doc["sd_online"] = MusicPlayer::sd_online();
+        doc["total_folders"] = MusicPlayer::total_folders();
+        doc["total_tracks"] = MusicPlayer::total_tracks();
+        doc["current_track"] = MusicPlayer::current_track();
+        doc["current_folder"] = MusicPlayer::current_folder();
+        doc["volume"] = MusicPlayer::get_volume();
+        doc["has_content_data"] = MusicPlayer::has_content_data();
+        doc["state"] = (int)MusicPlayer::get_state(); // 0=STOPPED, 1=PLAYING, 2=PAUSED
+        doc["playback_mode"] = (int)MusicPlayer::get_playback_mode();
+        doc["eq_mode"] = (int)MusicPlayer::get_eq_mode();
+
+        JsonArray arr = doc.createNestedArray("folders");
+
+        // Use content data if available, otherwise show empty
+        if (MusicPlayer::has_content_data()) {
+            uint8_t folderCount = MusicPlayer::get_content_folder_count();
+            for (uint8_t i = 0; i < folderCount; ++i) {
+                uint8_t folderId;
+                uint16_t trackCount;
+                String folderName;
+                if (MusicPlayer::get_content_folder(i, folderId, trackCount, folderName)) {
+                    JsonObject fo = arr.createNestedObject();
+                    fo["folder"] = folderId;
+                    fo["tracks"] = trackCount;
+                    fo["name"] = folderName;
+                }
+            }
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    server.on("/status_led_control", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_status_led_control(request);
     });
-    server.on("/set_display_brightness", [](AsyncWebServerRequest *request){
+    server.on("/set_display_brightness", [](AsyncWebServerRequest *request) {
         updateDisplayActivity(); // Display-related - disable clock
         app->handle_set_display_brightness(request);
     });
-    server.on("/set_display_color", [](AsyncWebServerRequest *request){
+    server.on("/set_display_color", [](AsyncWebServerRequest *request) {
         updateDisplayActivity(); // Display-related - disable clock
         app->handle_set_display_color(request);
     });
-    server.on("/gif", [](AsyncWebServerRequest *request){
+    server.on("/gif", [](AsyncWebServerRequest *request) {
         updateDisplayActivity(); // Display-related - disable clock
         app->handle_gif(request);
     });
-    server.on("/set_display_matrix", HTTP_POST, [](AsyncWebServerRequest *request){
-        updateDisplayActivity(); // Display-related - disable clock
-    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-        app->handle_set_display_matrix(request, data, len, index, total);
-    });
-    server.on("/list-alarms", [](AsyncWebServerRequest *request){
+    server.on(
+        "/set_display_matrix", HTTP_POST,
+        [](AsyncWebServerRequest *request) {
+            updateDisplayActivity(); // Display-related - disable clock
+        },
+        NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            app->handle_set_display_matrix(request, data, len, index, total);
+        });
+    server.on("/list-alarms", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_list_alarms(request);
     });
-    server.on("/delete-alarm", HTTP_POST, [](AsyncWebServerRequest *request){
-        updateClientActivity();
-    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-        app->handle_delete_alarm(request, data, len, index, total);
-    });
-    server.on("/modify-alarm", HTTP_POST, [](AsyncWebServerRequest *request){
-        updateClientActivity();
-    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-        app->handle_modify_alarm(request, data, len, index, total);
-    });
-    server.on("/set_alarm", HTTP_POST, [](AsyncWebServerRequest *request){
-        updateClientActivity();
-    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-        app->handle_set_alarm(request, data, len, index, total);
-    });
-    server.onNotFound([](AsyncWebServerRequest *request){
+    server.on(
+        "/delete-alarm", HTTP_POST, [](AsyncWebServerRequest *request) { updateClientActivity(); }, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            app->handle_delete_alarm(request, data, len, index, total);
+        });
+    server.on(
+        "/modify-alarm", HTTP_POST, [](AsyncWebServerRequest *request) { updateClientActivity(); }, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            app->handle_modify_alarm(request, data, len, index, total);
+        });
+    server.on(
+        "/set_alarm", HTTP_POST, [](AsyncWebServerRequest *request) { updateClientActivity(); }, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            app->handle_set_alarm(request, data, len, index, total);
+        });
+    server.onNotFound([](AsyncWebServerRequest *request) {
         updateClientActivity();
         app->handle_not_found(request);
     });
@@ -232,11 +304,145 @@ void setup(void) {
             return;
         }
     });
+    // Play a specific folder + track: /music_play_folder?folder=1&track=2
+    server.on("/music_play_folder", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("folder") || !request->hasParam("track")) {
+            request->send(400, "text/plain", "Missing folder or track parameter");
+            return;
+        }
+        int folder = request->getParam("folder")->value().toInt();
+        int track = request->getParam("track")->value().toInt();
+        Serial.printf("Play folder %d track %d\n", folder, track);
+        MusicPlayer::play_folder_track(static_cast<uint8_t>(folder), static_cast<uint16_t>(track));
+        request->send(200, "text/plain", "Playing folder " + String(folder) + " track " + String(track));
+    });
+
+    // List tracks in a folder: /music_list?folder=1
+    // Control endpoints: next, prev, set_volume
+    server.on("/music_next", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        MusicPlayer::next();
+        request->send(200, "text/plain", "next");
+    });
+    server.on("/music_prev", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        MusicPlayer::prev();
+        request->send(200, "text/plain", "prev");
+    });
+    // Set volume: /music_set_volume?v=20
+    server.on("/music_set_volume", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("volume")) {
+            request->send(400, "text/plain", "Missing volume parameter");
+            return;
+        }
+        uint8_t vol = request->getParam("volume")->value().toInt();
+        if (vol > MusicPlayer::MAX_VOLUME) {
+            request->send(400, "text/plain", "Volume exceeds maximum");
+            return;
+        }
+        MusicPlayer::set_volume(vol);
+        request->send(200, "text/plain", "Volume set to " + String(vol));
+    });
+
+    // Upload SD card content description (JSON)
+    server.on(
+        "/music_upload_content", HTTP_POST,
+        [](AsyncWebServerRequest *request) {
+            updateClientActivity();
+            request->send(200, "text/plain", "Upload complete");
+        },
+        NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            static String jsonContent = "";
+
+            if (index == 0) {
+                jsonContent = "";
+            }
+
+            for (size_t i = 0; i < len; i++) {
+                jsonContent += (char)data[i];
+            }
+
+            if (index + len == total) {
+                bool success = MusicPlayer::upload_sd_content(jsonContent);
+                if (!success) {
+                    request->send(400, "text/plain", "Failed to parse or save JSON content");
+                }
+            }
+        });
+
+    // Get list of tracks in a specific folder
+    server.on("/music_list", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("folder")) {
+            request->send(400, "text/plain", "Missing folder parameter");
+            return;
+        }
+
+        uint8_t folder = request->getParam("folder")->value().toInt();
+        StaticJsonDocument<1024> doc;
+
+        doc["folder"] = folder;
+        doc["has_content_data"] = MusicPlayer::has_content_data();
+
+        JsonArray tracks = doc.createNestedArray("tracks");
+
+        if (MusicPlayer::has_content_data()) {
+            // Use the new function to get tracks with proper IDs
+            MusicPlayer::get_folder_tracks(folder, tracks);
+        } else {
+            // Fallback: just list track numbers
+            uint16_t trackCount = MusicPlayer::tracks_in_folder(folder);
+            for (uint16_t i = 1; i <= trackCount; ++i) {
+                JsonObject track = tracks.createNestedObject();
+                track["id"] = i;
+                track["name"] = "Track " + String(i);
+            }
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
     server.on("/music_stop", [](AsyncWebServerRequest *request) {
         updateClientActivity();
         Serial.println("Stopping music...");
         MusicPlayer::stop();
         request->send(200, "text/plain", "Music stopped");
+    });
+
+    // Set playback mode: /music_set_playback_mode?mode=0 (0=normal, 1=repeat_all, 2=repeat_one, 3=shuffle)
+    server.on("/music_set_playback_mode", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("mode")) {
+            request->send(400, "text/plain", "Missing mode parameter");
+            return;
+        }
+        int mode = request->getParam("mode")->value().toInt();
+        if (mode < 0 || mode > 3) {
+            request->send(400, "text/plain", "Invalid mode (0-3)");
+            return;
+        }
+        MusicPlayer::set_playback_mode(static_cast<MusicPlayer::PlaybackMode>(mode));
+        request->send(200, "text/plain", "Playback mode set to " + String(mode));
+    });
+
+    // Set EQ mode: /music_set_eq?eq=0 (0=normal, 1=pop, 2=rock, 3=jazz, 4=classic, 5=bass)
+    server.on("/music_set_eq", [](AsyncWebServerRequest *request) {
+        updateClientActivity();
+        if (!request->hasParam("eq")) {
+            request->send(400, "text/plain", "Missing eq parameter");
+            return;
+        }
+        int eq = request->getParam("eq")->value().toInt();
+        if (eq < 0 || eq > 5) {
+            request->send(400, "text/plain", "Invalid EQ (0-5)");
+            return;
+        }
+        MusicPlayer::set_eq_mode(static_cast<MusicPlayer::EQMode>(eq));
+        request->send(200, "text/plain", "EQ mode set to " + String(eq));
     });
 
 #if 0
@@ -302,15 +508,19 @@ void setup(void) {
     server.begin();
     Serial.println("HTTP server started");
 
+    // Initialize AsyncElegantOTA
+    ElegantOTA.begin(&server);
+    Serial.println("OTA Update available at: http://" + WiFi.localIP().toString() + "/update");
+
     AsyncTasker::schedule(
         SERVER_CHECK_INTERVAL,
         [](uint64_t, uint64_t &, bool &) {
             static size_t n_fails = 0;
-            
+
             // Check if we've had recent DISPLAY activity (not just any client activity)
             unsigned long now = millis();
             bool hasDisplayActivity = (now - g_lastDisplayActivity) < (SERVER_CHECK_INTERVAL * 2);
-            
+
             if (hasDisplayActivity) {
                 n_fails = 0;
                 Serial.println("Display activity detected - clock mode OFF");
@@ -357,7 +567,8 @@ void setup(void) {
 void loop(void) {
     MDNS.update();
     app->run();
-    for(auto& [_, button] : buttons) {
+    MusicPlayer::run();
+    for (auto &[_, button] : buttons) {
         button.tick();
     }
     AsyncTasker::runEventLoop();

@@ -1,57 +1,836 @@
 const char MUSIC_HTML[] PROGMEM = R"html(
 <!DOCTYPE html>
-<html lang="en">
+<html lang='en'>
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1a1a">
+  <meta charset='UTF-8'>
+  <meta name='viewport'
+    content='width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover'>
+  <meta name='theme-color' content='#1a1a1a'>
   <title>Music Player</title>
   <style>
+    :root {
+      --bg: #1a1a1a;
+      --panel: #222;
+      --border: #333;
+      --border-soft: #2a2a2a;
+      --accent: #3d6bff;
+      --accent-hover: #5c84ff;
+      --text: #fff;
+      --text-dim: #aaa;
+      --radius: 12px;
+      --r-sm: 6px;
+      --folder-active: #344065;
+      --track-active: #2d3c55;
+      --scroll-thumb: #444;
+      --scroll-track: #222;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
     body {
-      background: #1a1a1a;
-      color: #fff;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
       margin: 0;
-    }
-    .container {
-      background: #222;
-      border-radius: 12px;
-      padding: 32px 24px;
-      box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
       flex-direction: column;
+      min-height: 100vh
+    }
+
+    .topbar {
+      display: flex;
       align-items: center;
-      gap: 24px;
-      max-width: 350px;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: #181818;
+      border-bottom: 1px solid var(--border);
+      gap: 12px
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.05rem;
+      font-weight: 600
+    }
+
+    .title .icon {
+      font-size: 1.5rem
+    }
+
+    .btn {
+      background: #333;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: .8rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: .18s background, .18s border, .18s transform;
+      text-decoration: none
+    }
+
+    .btn:hover {
+      background: #3b3b3b
+    }
+
+    .btn:active {
+      transform: translateY(1px)
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent)
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover)
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--border-soft)
+    }
+
+    .btn-ghost:hover {
+      background: #2a2a2a
+    }
+
+    .btn-icon {
+      padding: 8px;
+      width: 38px;
+      height: 38px;
+      justify-content: center
+    }
+
+    .layout {
+      flex: 1;
+      display: flex;
+      padding: 16px;
+      gap: 16px
+    }
+
+    .sidebar {
+      width: 200px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column
+    }
+
+    .sidebar-header {
+      padding: 10px 14px;
+      font-size: .65rem;
+      letter-spacing: .05em;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase
+    }
+
+    .folder-list {
+      list-style: none;
+      margin: 0;
+      padding: 6px 0 10px;
+      overflow-y: auto;
+      flex: 1
+    }
+
+    .folder-item {
+      margin: 2px 6px
+    }
+
+    .folder-btn {
       width: 100%;
-      text-align: center;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      text-align: left;
+      padding: 8px 10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: .75rem;
+      display: flex;
+      gap: 8px;
+      align-items: center
     }
-    h1 {
-      font-size: 2em;
-      margin-bottom: 16px;
+
+    .folder-btn:hover {
+      background: #2d2d2d
     }
-    p {
-      font-size: 1.2em;
-      color: #aaa;
+
+    .folder-btn.active {
+      background: var(--folder-active);
+      border-color: #41598d
     }
-    .icon {
-      font-size: 4em;
-      margin-bottom: 16px;
+
+    .folder-badge {
+      background: #2f2f2f;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: .55rem;
+      color: var(--text-dim)
+    }
+
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center
+    }
+
+    .volume {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .65rem;
+      color: var(--text-dim)
+    }
+
+    .volume input {
+      width: 120px
+    }
+
+    input[type=range] {
+      accent-color: var(--accent);
+      cursor: pointer
+    }
+
+    select.btn {
+      background: #333;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: .75rem;
+      min-width: 80px
+    }
+
+    select.btn:hover {
+      background: #3b3b3b
+    }
+
+    .status-row {
+      font-size: .6rem;
+      color: var(--text-dim);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      line-height: 1.3;
+      align-items: center
+    }
+
+    .sd-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: .7rem
+    }
+
+    .info-panel {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 8px 10px;
+      font-size: .55rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3)
+    }
+
+    .info-panel.show {
+      display: block
+    }
+
+    .info-btn {
+      position: relative
+    }
+
+    .now-playing {
+      flex: 1;
+      min-width: 200px;
+      font-size: .7rem;
+      color: var(--text-dim);
+      padding: 4px 8px;
+      background: #1a1a1a;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-sm);
+      overflow: hidden
+    }
+
+    .now-playing-title {
+      font-size: .55rem;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: .05em
+    }
+
+    .now-playing-track {
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500
+    }
+
+    .explorer {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      flex: 1;
+      display: flex;
+      min-height: 240px;
+      overflow: hidden
+    }
+
+    .tracks {
+      flex: 1;
+      display: flex;
+      flex-direction: column
+    }
+
+    .track-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: .65rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+      align-items: center
+    }
+
+    .track-list {
+      list-style: none;
+      margin: 0;
+      padding: 4px 0 10px;
+      overflow-y: auto;
+      flex: 1
+    }
+
+    .track-item {
+      margin: 0 6px
+    }
+
+    .track-row {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      text-align: left;
+      padding: 6px 8px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: .68rem;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--text)
+    }
+
+    .track-row:hover {
+      background: #2d2d2d
+    }
+
+    .track-row.playing {
+      background: var(--track-active);
+      border-color: #3c6abc
+    }
+
+    .track-index {
+      width: 26px;
+      opacity: .55;
+      font-size: .55rem
+    }
+
+    .track-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .playing-indicator {
+      color: var(--accent);
+      font-size: .75rem
+    }
+
+    #configPanel {
+      display: none
+    }
+
+    #configPanel.open {
+      display: flex
+    }
+
+    .config-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 8px
+    }
+
+    .config-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .json-box {
+      width: 100%;
+      height: 120px;
+      background: #181818;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 8px;
+      resize: vertical;
+      font-family: monospace;
+      font-size: .6rem;
+      line-height: 1.2
+    }
+
+    details pre {
+      background: #181818;
+      padding: 8px;
+      border-radius: var(--r-sm);
+      font-size: .55rem
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--scroll-track)
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--scroll-thumb);
+      border-radius: 6px
+    }
+
+    @media (max-width:820px) {
+      .layout {
+        flex-direction: column
+      }
+
+      .content {
+        order: 1; /* Controls panel first */
+      }
+
+      .sidebar {
+        order: 2; /* Folders second */
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto
+      }
+
+      .explorer {
+        order: 3; /* Tracks last */
+        min-height: 320px
+      }
+
+      .folder-list {
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto
+      }
+
+      .folder-item {
+        flex: 0 0 auto
+      }
     }
   </style>
 </head>
+
 <body>
-  <div class="container">
-    <div class="icon">🎵</div>
-    <h1>Music Player</h1>
-    <p>Coming soon! This feature is currently under construction.</p>
-    <button id="homeButton" onclick="location.href='/'">🏠 Home</button>
+  <div class='topbar'>
+    <div class='title'><span class='icon'>🎵</span><span>Music Player</span></div>
+    <div style='display:flex;gap:8px;'><button class='btn btn-ghost btn-icon' onclick="location.href='/'"
+        title='Home'>🏠</button><button id='configBtn' class='btn btn-ghost btn-icon'
+        title='Configuration'>⚙️</button><button id='refreshButton' class='btn btn-ghost btn-icon'
+        title='Refresh'>⟳</button></div>
   </div>
+  <div class='layout'>
+    <aside class='sidebar'>
+      <div class='sidebar-header'>Folders</div>
+      <ul id='folders' class='folder-list'></ul>
+    </aside>
+    <main class='content'>
+      <div class='panel'>
+        <div class='controls'><button id='playBtn' class='btn btn-primary' title='Play/Pause'>▶</button><button
+            id='stopBtn' class='btn' title='Stop'>⏹</button><button id='prevBtn' class='btn' title='Previous'>⏮</button><button id='nextBtn' class='btn' title='Next'>⏭</button>
+          <div class='volume'>Vol <input id='volSlider' type='range' min='0' max='30' value='15'></div>
+          <select id='playbackMode' class='btn' title='Playback Mode'>
+            <option value='0'>Normal</option>
+            <option value='1'>Repeat All</option>
+            <option value='2'>Repeat One</option>
+            <option value='3'>Shuffle</option>
+          </select>
+          <select id='eqMode' class='btn' title='Equalizer'>
+            <option value='0'>Normal</option>
+            <option value='1'>Pop</option>
+            <option value='2'>Rock</option>
+            <option value='3'>Jazz</option>
+            <option value='4'>Classic</option>
+            <option value='5'>Bass</option>
+          </select>
+          <div class='now-playing' id='nowPlaying'>
+            <div class='now-playing-title'>Now Playing</div>
+            <div class='now-playing-track' id='nowPlayingTrack'>No track selected</div>
+          </div>
+          <div class='status-row'>
+            <div class='sd-status' id='sdStatus'>💾🔴</div>
+            <div class='info-btn'>
+              <button id='infoBtn' class='btn btn-icon' title='Show Info'>ℹ️</button>
+              <div id='infoPanel' class='info-panel'></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id='configPanel' class='panel'>
+        <div class='config-inner'><strong
+            style='font-size:.65rem;letter-spacing:.05em;text-transform:uppercase;color:var(--text-dim);'>Library
+            Management</strong><textarea id='jsonContent' class='json-box'
+            placeholder='Paste or generate JSON describing folders & tracks...'></textarea>
+          <div class='config-actions'><button id='uploadBtn' class='btn btn-primary'>Upload JSON</button><button
+              id='generateBtn' class='btn'>Scan Local Folder</button><input type='file' id='folderPicker'
+              webkitdirectory style='display:none;'></div>
+          <details>
+            <summary style='cursor:pointer;color:var(--text-dim);font-size:.55rem;'>JSON Format Example</summary>
+            <pre>{
+  "folders": [
+    { "id": 1, "name": "Music", "tracks": [ {"id":1,"name":"Song 1.mp3"} ] },
+    { "id": 2, "name": "Sounds", "tracks": [ {"id":1,"name":"Beep.mp3"} ] }
+  ]
+}</pre>
+          </details>
+          <div id='uploadStatus' style='font-size:.55rem;color:var(--text-dim);'></div>
+        </div>
+      </div>
+      <div class='explorer'>
+        <section class='tracks'>
+          <div class='track-header'>Tracks <span id='trackMeta'></span></div>
+          <ul id='tracks' class='track-list'></ul>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    let lastMusicInfo = null;
+    let lastPlayedTrack = null;
+    let activeFolder = null;
+    let folderTrackCache = {}; // Cache track data by folder
+    const foldersEl = document.getElementById('folders');
+    const tracksEl = document.getElementById('tracks');
+    const trackMetaEl = document.getElementById('trackMeta');
+
+    function getCurrentTrackName(data) {
+      if (!data.current_folder || !data.current_track) return 'No track selected';
+
+      // Check if we have cached track data for current folder
+      const folderData = folderTrackCache[data.current_folder];
+      if (folderData && folderData.tracks) {
+        const track = folderData.tracks.find(t => t.id === data.current_track);
+        if (track && track.name) {
+          const folderName = data.folders ? data.folders.find(f => f.folder === data.current_folder)?.name || `Folder ${data.current_folder}` : `Folder ${data.current_folder}`;
+          return `${track.name} (${folderName})`;
+        }
+      }
+
+      // Fallback to generic display
+      return `Track ${data.current_track} (Folder ${data.current_folder})`;
+    }
+
+    function setConfigOpen(open){
+      const panel=document.getElementById('configPanel');
+      if(open) panel.classList.add('open'); else panel.classList.remove('open');
+      localStorage.setItem('music_cfg_open', open? '1':'0');
+    }
+    document.getElementById('configBtn').addEventListener('click', ()=> setConfigOpen(!document.getElementById('configPanel').classList.contains('open')) );
+    if(localStorage.getItem('music_cfg_open')==='1') setConfigOpen(true);
+
+    async function fetchMusicInfo(){
+      try {
+        const res = await fetch('/music_info');
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        lastMusicInfo = data;
+        renderMusicInfo(data);
+      } catch(e){
+        document.getElementById('musicInfo').textContent = 'Error: '+e.message;
+      }
+    }
+
+    function renderMusicInfo(data){
+      // Update SD status with icon
+      const sdStatusEl = document.getElementById('sdStatus');
+      sdStatusEl.innerHTML = data.sd_online ? '💾🟢' : '💾🔴';
+
+      // Update detailed info panel
+      const stateText = data.state === 1 ? 'Playing' : data.state === 2 ? 'Paused' : 'Stopped';
+      const lib = data.has_content_data ? 'Library: custom' : 'Library: device';
+      const infoPanel = document.getElementById('infoPanel');
+      infoPanel.innerHTML = `Folders: ${data.total_folders} • Tracks: ${data.total_tracks} • Current: F${data.current_folder||'-'}/T${data.current_track||'-'} • Vol: ${data.volume} • ${stateText} • ${lib}`;
+
+      // Update play/pause button
+      const playBtn = document.getElementById('playBtn');
+      if(data.state === 1) { // Playing
+        playBtn.innerHTML = '⏸'; // Pause icon
+        playBtn.title = 'Pause';
+      } else { // Stopped or Paused
+        playBtn.innerHTML = '▶'; // Play icon
+        playBtn.title = 'Play';
+      }
+
+      // Update dropdowns
+      if(!window._playbackModeBusy) document.getElementById('playbackMode').value = data.playback_mode || 0;
+      if(!window._eqModeBusy) document.getElementById('eqMode').value = data.eq_mode || 0;
+
+      // Update now playing display
+      document.getElementById('nowPlayingTrack').textContent = getCurrentTrackName(data);
+
+      // Render folders with "All" option
+      foldersEl.innerHTML = '';
+
+      // Add "All" folder option
+      const allLi = document.createElement('li');
+      allLi.className = 'folder-item';
+      const allBtn = document.createElement('button');
+      allBtn.className = 'folder-btn';
+      if(activeFolder === 'all') allBtn.classList.add('active');
+      allBtn.innerHTML = `<span style="flex:1;">All Tracks</span><span class='folder-badge'>${data.total_tracks}</span>`;
+      allBtn.addEventListener('click', ()=>{ activeFolder='all'; loadAllTracks(); document.querySelectorAll('.folder-btn').forEach(x=>x.classList.remove('active')); allBtn.classList.add('active'); });
+      allLi.appendChild(allBtn); foldersEl.appendChild(allLi);
+
+      if(data.folders){
+        data.folders.forEach(f=>{
+          const li=document.createElement('li');
+          li.className='folder-item';
+          const b=document.createElement('button');
+          b.className='folder-btn';
+          if(f.folder === data.current_folder && activeFolder !== 'all') b.classList.add('active');
+          b.innerHTML = `<span style="flex:1;">${f.name? f.name : 'Folder '+ f.folder}</span><span class='folder-badge'>${f.tracks}</span>`;
+          b.addEventListener('click', ()=>{ activeFolder=f.folder; loadFolder(f.folder); document.querySelectorAll('.folder-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); });
+          li.appendChild(b); foldersEl.appendChild(li);
+        });
+      }
+      if(!window._volSliderBusy) document.getElementById('volSlider').value = data.volume;
+    }    async function loadFolder(folder){
+      const res = await fetch('/music_list?folder=' + folder);
+      if(!res.ok) return;
+      const data = await res.json();
+
+      // Cache the track data for now playing display
+      folderTrackCache[folder] = data;
+
+      tracksEl.innerHTML='';
+      trackMetaEl.textContent = data.tracks? `(${data.tracks.length})` : '(0)';
+      if(!data.tracks || !data.tracks.length){
+        const empty=document.createElement('div');
+        empty.style.padding='10px 12px';
+        empty.style.fontSize='0.55rem';
+        empty.style.color='var(--text-dim)';
+        empty.textContent='No tracks';
+        tracksEl.appendChild(empty);
+        return;
+      }
+      data.tracks.forEach((track, idx)=>{
+        const li=document.createElement('li'); li.className='track-item';
+        const row=document.createElement('button'); row.className='track-row';
+        const name = track.name || `Track ${track.id}`;
+        row.innerHTML = `<span class='track-index'>${track.id ?? (idx+1)}</span><span class='track-name'>${name}</span><span class='playing-indicator' style='display:none;'>♪</span>`;
+        row.addEventListener('click', ()=>{
+          lastPlayedTrack = track.id;
+          fetch(`/music_play_folder?folder=${folder}&track=${track.id}`).then(()=>{ highlightPlaying(folder, track.id); fetchMusicInfo(); });
+        });
+        li.appendChild(row); tracksEl.appendChild(li);
+      });
+      highlightPlaying(activeFolder || folder, lastPlayedTrack);
+    }
+
+    async function loadAllTracks(){
+      if(!lastMusicInfo || !lastMusicInfo.folders) return;
+      tracksEl.innerHTML='';
+      let totalTracks = 0;
+      const allTracks = [];
+
+      // Collect all tracks from all folders
+      for(const folder of lastMusicInfo.folders) {
+        const res = await fetch('/music_list?folder=' + folder.folder);
+        if(!res.ok) continue;
+        const data = await res.json();
+        if(data.tracks) {
+          data.tracks.forEach(track => {
+            allTracks.push({...track, folder: folder.folder, folderName: folder.name});
+          });
+        }
+      }
+
+      trackMetaEl.textContent = `(${allTracks.length})`;
+
+      if(!allTracks.length){
+        const empty=document.createElement('div');
+        empty.style.padding='10px 12px';
+        empty.style.fontSize='0.55rem';
+        empty.style.color='var(--text-dim)';
+        empty.textContent='No tracks found';
+        tracksEl.appendChild(empty);
+        return;
+      }
+
+      allTracks.forEach((track, idx)=>{
+        const li=document.createElement('li'); li.className='track-item';
+        const row=document.createElement('button'); row.className='track-row';
+        const name = track.name || `Track ${track.id}`;
+        const folderName = track.folderName || `F${track.folder}`;
+        row.innerHTML = `<span class='track-index'>${folderName}</span><span class='track-name'>${name}</span><span class='playing-indicator' style='display:none;'>♪</span>`;
+        row.addEventListener('click', ()=>{
+          lastPlayedTrack = track.id;
+          fetch(`/music_play_folder?folder=${track.folder}&track=${track.id}`).then(()=>{ highlightPlaying('all', track.id); fetchMusicInfo(); });
+        });
+        li.appendChild(row); tracksEl.appendChild(li);
+      });
+    }
+
+    function highlightPlaying(folder, trackId){
+      document.querySelectorAll('.track-row').forEach(r=>{ r.classList.remove('playing'); const ind=r.querySelector('.playing-indicator'); if(ind) ind.style.display='none'; });
+      if(!trackId) return;
+      document.querySelectorAll('.track-row').forEach(r=>{
+        const idxEl = r.querySelector('.track-index');
+        if(idxEl && parseInt(idxEl.textContent) === trackId){
+          r.classList.add('playing');
+          const ind=r.querySelector('.playing-indicator'); if(ind) ind.style.display='inline';
+        }
+      });
+    }
+
+    document.getElementById('refreshButton').addEventListener('click', ()=>{
+      fetchMusicInfo();
+      if(activeFolder === 'all') loadAllTracks();
+      else if(activeFolder) loadFolder(activeFolder);
+    });
+
+    // Info button toggle
+    document.getElementById('infoBtn').addEventListener('click', ()=>{
+      const panel = document.getElementById('infoPanel');
+      panel.classList.toggle('show');
+    });
+
+    // Close info panel when clicking outside
+    document.addEventListener('click', (e)=>{
+      const infoBtn = document.getElementById('infoBtn');
+      const panel = document.getElementById('infoPanel');
+      if(!infoBtn.contains(e.target) && !panel.contains(e.target)) {
+        panel.classList.remove('show');
+      }
+    });
+    document.getElementById('playBtn').addEventListener('click', ()=> fetch('/music_play').then(()=> fetchMusicInfo()));
+    document.getElementById('stopBtn').addEventListener('click', ()=> fetch('/music_stop').then(()=> fetchMusicInfo()));
+    document.getElementById('prevBtn').addEventListener('click', ()=> fetch('/music_prev').then(()=> fetchMusicInfo()));
+    document.getElementById('nextBtn').addEventListener('click', ()=> fetch('/music_next').then(()=> fetchMusicInfo()));
+
+    const volSlider = document.getElementById('volSlider');
+    const finishVol = v => fetch(`/music_set_volume?volume=${v}`).then(()=> fetchMusicInfo());
+    volSlider.addEventListener('pointerdown', ()=> window._volSliderBusy=true);
+    volSlider.addEventListener('pointerup', e=>{ window._volSliderBusy=false; finishVol(e.target.value); });
+    volSlider.addEventListener('change', e=>{ if(!window._volSliderBusy) finishVol(e.target.value); });
+
+    // Playback mode dropdown
+    const playbackMode = document.getElementById('playbackMode');
+    playbackMode.addEventListener('change', e=>{
+      window._playbackModeBusy=true;
+      fetch(`/music_set_playback_mode?mode=${e.target.value}`).then(()=>{
+        setTimeout(()=>{ window._playbackModeBusy=false; fetchMusicInfo(); }, 200);
+      });
+    });
+
+    // EQ mode dropdown
+    const eqMode = document.getElementById('eqMode');
+    eqMode.addEventListener('change', e=>{
+      window._eqModeBusy=true;
+      fetch(`/music_set_eq?eq=${e.target.value}`).then(()=>{
+        setTimeout(()=>{ window._eqModeBusy=false; fetchMusicInfo(); }, 200);
+      });
+    });
+
+    document.getElementById('uploadBtn').addEventListener('click', async ()=>{
+      const content = document.getElementById('jsonContent').value.trim();
+      const status = document.getElementById('uploadStatus');
+      if(!content){ status.textContent='Provide JSON first'; status.style.color='#f88'; return; }
+      try {
+        JSON.parse(content);
+        status.textContent='Uploading...'; status.style.color='#88f';
+        const res = await fetch('/music_upload_content',{method:'POST',headers:{'Content-Type':'application/json'},body:content});
+        if(res.ok){ status.textContent='Uploaded. Refreshing...'; status.style.color='#8f8'; setTimeout(()=>{ fetchMusicInfo(); status.textContent=''; }, 1200); }
+        else { status.textContent='Upload failed: '+ await res.text(); status.style.color='#f88'; }
+      } catch(e){ status.textContent='Invalid JSON: '+e.message; status.style.color='#f88'; }
+    });
+
+    document.getElementById('generateBtn').addEventListener('click', ()=> document.getElementById('folderPicker').click());
+    document.getElementById('folderPicker').addEventListener('change', async (ev)=>{
+      const files = ev.target.files;
+      const status = document.getElementById('uploadStatus');
+      if(!files.length){ status.textContent='No folder selected'; status.style.color='#f88'; return; }
+      try {
+        status.textContent='Scanning...'; status.style.color='#88f';
+        const folders = {};
+        for(const file of files){
+          const parts = file.webkitRelativePath.split('/');
+            if(parts.length >= 2){
+              const folderName = parts[parts.length-2];
+              const fileName = parts[parts.length-1];
+              if(!/\.(mp3|wav|flac|m4a|aac)$/i.test(fileName)) continue;
+              const fm = folderName.match(/^(\d+)$/); if(!fm) continue;
+              const fid = parseInt(fm[1]);
+              if(!folders[fid]) folders[fid] = { id: fid, name: folderName, tracks: [] };
+              const tm = fileName.match(/^(\d+)/); const tid = tm? parseInt(tm[1]) : folders[fid].tracks.length+1;
+              folders[fid].tracks.push({ id: tid, name: fileName });
+            }
+        }
+        const sorted = Object.values(folders).sort((a,b)=>a.id-b.id).map(f=>({...f, tracks: f.tracks.sort((a,b)=>a.id-b.id)}));
+        if(!sorted.length){ status.textContent='No numbered folders (1,2,3,...)'; status.style.color='#f88'; return; }
+        const json = { folders: sorted };
+        document.getElementById('jsonContent').value = JSON.stringify(json,null,2);
+        status.textContent = `Found ${sorted.length} folders (${sorted.reduce((s,f)=>s+f.tracks.length,0)} tracks)`; status.style.color='#8f8';
+        setTimeout(()=> status.textContent='', 4000);
+      } catch(e){ status.textContent='Scan error: '+ e.message; status.style.color='#f88'; }
+    });
+
+    fetchMusicInfo();
+  </script>
 </body>
 </html>
 )html";
